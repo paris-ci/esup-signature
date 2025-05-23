@@ -266,7 +266,7 @@ def write_yaml_file(config_dict: Dict[str, Any], output_path: str) -> None:
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
-        yaml_config_str = yaml.dumps(
+        yaml_config_str = yaml.dump(
             config_dict,
             default_flow_style=False,
             sort_keys=True,
