@@ -234,6 +234,9 @@ def process_config(default_config: Dict[str, Any], env_config: Dict[str, Any], k
     """
     # Start with a copy of the default configuration
     final_config = default_config.copy()
+
+    # Ensure required database configuration is present
+    deep_merge(REQUIRED_DB_CONFIG, final_config)
     
     # Apply deletions first (keeping root nodes)
     for keys in keys_to_delete:
@@ -251,10 +254,7 @@ def process_config(default_config: Dict[str, Any], env_config: Dict[str, Any], k
     
     # Apply environment config
     deep_merge(env_config, final_config)
-    
-    # Ensure required database configuration is present
-    deep_merge(REQUIRED_DB_CONFIG, final_config)
-    
+
     return final_config
 
 
