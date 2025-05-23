@@ -4,6 +4,10 @@ Convert nested environment variables to YAML templates.
 Reads environment variables with double underscore separators and converts them
 to nested YAML structure with proper data type detection.
 Only includes values that override the defaults from application.yml.
+
+To delete entire sections, use the DELETE__ prefix:
+DELETE__SPRING__LDAP will remove the entire spring.ldap section
+DELETE__LDAP will remove the entire ldap section
 """
 
 import os
@@ -12,13 +16,14 @@ import logging
 import sys
 from pathlib import Path
 from tqdm import tqdm
-from typing import Dict, Any, Union
+from typing import Dict, Any, Union, List
 
 # Configuration constants
 DEFAULT_CONFIG_PATH = "/application.yml"
 OUTPUT_FILE = "/tmp/application-docker.yml"
 ENV_SEPARATOR = "__"
 YAML_KEY_SEPARATOR = "-"
+DELETE_PREFIX = "DELETE__"
 LOG_LEVEL = logging.INFO
 
 # Required database configuration
@@ -127,6 +132,24 @@ def get_nested_value(config_dict: Dict[str, Any], keys: list) -> Any:
     return current
 
 
+def delete_nested_key(config_dict: Dict[str, Any], keys: list) -> None:
+    """
+    Delete a key from a nested dictionary using a list of keys.
+    """
+    if not keys:
+        return
+        
+    current = config_dict
+    for key in keys[:-1]:
+        if not isinstance(current, dict) or key not in current:
+            return
+        current = current[key]
+    
+    if isinstance(current, dict) and keys[-1] in current:
+        del current[keys[-1]]
+        logger.debug(f"Deleted key: {'.'.join(keys)}")
+
+
 def set_nested_dict(nested_dict: Dict[str, Any], keys: list, value: Any, default_config: Dict[str, Any]) -> None:
     """
     Set a value in a nested dictionary using a list of keys.
@@ -157,22 +180,32 @@ def set_nested_dict(nested_dict: Dict[str, Any], keys: list, value: Any, default
         raise
 
 
-def parse_environment_variables(default_config: Dict[str, Any]) -> Dict[str, Any]:
+def parse_environment_variables(default_config: Dict[str, Any]) -> tuple[Dict[str, Any], List[List[str]]]:
     """
     Parse environment variables and convert to nested dictionary structure.
-    Only includes values that override the defaults.
+    Returns a tuple of (config_dict, keys_to_delete)
     """
     nested_config = {}
+    keys_to_delete = []
     env_vars = [(k, v) for k, v in os.environ.items() if ENV_SEPARATOR in k]
     
     if not env_vars:
         logger.warning(f"No environment variables found with separator '{ENV_SEPARATOR}'")
-        return nested_config
+        return nested_config, keys_to_delete
     
     logger.info(f"Found {len(env_vars)} environment variables to process")
     
     for env_key, env_value in tqdm(env_vars, desc="Processing environment variables"):
         try:
+            # Check if this is a delete command
+            if env_key.startswith(DELETE_PREFIX):
+                # Convert the key parts to YAML format
+                key_parts = env_key[len(DELETE_PREFIX):].split(ENV_SEPARATOR)
+                yaml_keys = [convert_key_format(part) for part in key_parts]
+                keys_to_delete.append(yaml_keys)
+                logger.debug(f"Marked for deletion: {'.'.join(yaml_keys)}")
+                continue
+            
             # Split by separator and convert format
             key_parts = env_key.split(ENV_SEPARATOR)
             yaml_keys = [convert_key_format(part) for part in key_parts]
@@ -186,10 +219,10 @@ def parse_environment_variables(default_config: Dict[str, Any]) -> Dict[str, Any
             logger.error(f"Failed to process environment variable '{env_key}': {e}")
             raise
     
-    return nested_config
+    return nested_config, keys_to_delete
 
 
-def merge_configs(env_config: Dict[str, Any], default_config: Dict[str, Any]) -> Dict[str, Any]:
+def merge_configs(env_config: Dict[str, Any], default_config: Dict[str, Any], keys_to_delete: List[List[str]]) -> Dict[str, Any]:
     """
     Merge environment configuration with default configuration,
     ensuring required database configuration is present.
@@ -209,6 +242,10 @@ def merge_configs(env_config: Dict[str, Any], default_config: Dict[str, Any]) ->
     
     # Merge environment config
     deep_merge(env_config, merged_config)
+    
+    # Delete marked sections
+    for keys in keys_to_delete:
+        delete_nested_key(merged_config, keys)
     
     # Ensure required database configuration is present
     deep_merge(REQUIRED_DB_CONFIG, merged_config)
@@ -253,10 +290,10 @@ def main():
         logger.info("Loaded default configuration from application.yml")
         
         # Parse environment variables
-        env_config = parse_environment_variables(default_config)
+        env_config, keys_to_delete = parse_environment_variables(default_config)
         
         # Merge configurations
-        final_config = merge_configs(env_config, default_config)
+        final_config = merge_configs(env_config, default_config, keys_to_delete)
         
         # Write to YAML file
         write_yaml_file(final_config, OUTPUT_FILE)
