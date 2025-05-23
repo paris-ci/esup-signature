@@ -25,7 +25,7 @@ OUTPUT_FILE = "/tmp/application-docker.yml"
 ENV_SEPARATOR = "__"
 YAML_KEY_SEPARATOR = "-"
 DELETE_PREFIX = "DELETE__"
-LOG_LEVEL = logging.INFO
+LOG_LEVEL = logging.DEBUG
 
 # Required database configuration
 REQUIRED_DB_CONFIG = {
