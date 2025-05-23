@@ -1,8 +1,7 @@
 #!/bin/bash
 set -e
 
-# Generate the configuration file
-gomplate -f /app/config.tmpl > /tmp/application-docker.yml
+python3 /config-generator.py
 
 # Start the application
-exec java -jar /esup-signature.war --spring.config.location=file:/tmp/application-docker.yml 
+exec java -jar /esup-signature.war --spring.config.location=file:/tmp/application-docker.yml

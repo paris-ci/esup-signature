@@ -1,5 +1,5 @@
 *
-!config.tmpl
+!config-generator.py
 !docker-entrypoint.sh
 .gitlab-ci.yml
 !.gitignore
