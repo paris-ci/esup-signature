@@ -224,6 +224,17 @@ def parse_environment_variables() -> tuple[Dict[str, Any], List[List[str]]]:
     return nested_config, keys_to_delete
 
 
+# Deep merge the environment configuration
+def deep_merge(source, destination):
+    for key, value in source.items():
+        if isinstance(value, dict):
+            if key not in destination:
+                destination[key] = {}
+            deep_merge(value, destination[key])
+        else:
+            destination[key] = value
+
+
 def process_config(default_config: Dict[str, Any], env_config: Dict[str, Any], keys_to_delete: List[List[str]]) -> Dict[str, Any]:
     """
     Process the configuration in the correct order:
@@ -241,17 +252,7 @@ def process_config(default_config: Dict[str, Any], env_config: Dict[str, Any], k
     # Apply deletions first (keeping root nodes)
     for keys in keys_to_delete:
         clear_nested_dict(final_config, keys)
-    
-    # Deep merge the environment configuration
-    def deep_merge(source, destination):
-        for key, value in source.items():
-            if isinstance(value, dict):
-                if key not in destination:
-                    destination[key] = {}
-                deep_merge(value, destination[key])
-            else:
-                destination[key] = value
-    
+
     # Apply environment config
     deep_merge(env_config, final_config)
 
