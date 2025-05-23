@@ -54,9 +54,9 @@ def detect_data_type(value: str) -> Union[str, int, float, bool]:
     value = value.strip()
     
     # Boolean detection
-    if value.lower() in ('true', 'yes', '1', 'on'):
+    if value.lower() in ('true', 'yes', 'on'):
         return True
-    elif value.lower() in ('false', 'no', '0', 'off'):
+    elif value.lower() in ('false', 'no', 'off'):
         return False
     
     # Number detection
