@@ -1,14 +1,19 @@
-{{- /* Convert environment variables to YAML */ -}}
-{{- $config := dict -}}
-{{- range $key, $value := .Env -}}
-  {{- if strings.Contains $key "__" -}}
-    {{- $parts := strings.Split $key "__" -}}
-    {{- $prefix := strings.ToLower (index $parts 0) -}}
-    {{- $rest := coll.Slice $parts 1 -}}
-    {{- $yamlKey := printf "%s:%s" $prefix (strings.Join $rest ":") -}}
-    {{- $_ := set $config $yamlKey $value -}}
-  {{- end -}}
-{{- end -}}
+{{- $env := dict -}}
+{{- range $key, $value := .Env }}
+  {{- $keyParts := strings.Split $key "__" }}
+  {{- if gt (len $keyParts) 1 }}
+    {{- $section := index $keyParts 0 }}
+    {{- $subkey := (strings.ToLower (index $keyParts 1)) }}
+    {{- if not (index $env $section) }}
+      {{- $env = set $env $section (dict) }}
+    {{- end }}
+    {{- $env = set $env $section (set (index $env $section) $subkey $value) }}
+  {{- end }}
+{{- end }}
 
-{{- /* Output the YAML */ -}}
-{{- toYAML $config -}} 
+{{- range $section, $subkeys := $env }}
+{{ $section }}:
+  {{- range $subkey, $subval := $subkeys }}
+    {{ $subkey }}: "{{ $subval }}"
+  {{- end }}
+{{- end }}
