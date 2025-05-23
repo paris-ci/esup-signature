@@ -111,8 +111,8 @@ def detect_data_type(value: str) -> Union[str, int, float, bool]:
         # Try integer first
         if '.' not in value and 'e' not in value.lower():
             return int(value)
-        else:
-            # Try float
+        # If there is 0 or 1 dot in the value, otherwise number only, try float
+        elif value.count('.') <= 1 and value.replace('.', '').isdigit():
             return float(value)
     except ValueError:
         pass
