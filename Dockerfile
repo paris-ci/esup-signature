@@ -2,11 +2,6 @@
 FROM maven:3.9.6-eclipse-temurin-17 AS builder
 WORKDIR /build
 COPY pom.xml .
-# Cache Maven dependencies
-RUN --mount=type=cache,target=/root/.m2/repository \
-    --mount=type=cache,target=/root/.m2/.m2 \
-    mvn dependency:go-offline
-
 COPY src ./src
 RUN --mount=type=cache,target=/root/.m2/repository \
     --mount=type=cache,target=/root/.m2/.m2 \
