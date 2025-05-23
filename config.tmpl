@@ -6,7 +6,7 @@
     {{- $prefix := strings.ToLower (index $parts 0) -}}
     {{- $rest := coll.Slice $parts 1 -}}
     {{- $yamlKey := printf "%s:%s" $prefix (strings.Join $rest ":") -}}
-    {{- $_ := set $config $yamlKey (toString $value) -}}
+    {{- $_ := set $config $yamlKey $value -}}
   {{- end -}}
 {{- end -}}
 
