@@ -27,6 +27,18 @@ YAML_KEY_SEPARATOR = "-"
 DELETE_PREFIX = "DELETE__"
 LOG_LEVEL = logging.DEBUG
 
+# If /docker-config.yml exists, use it as the final configuration, exit early
+
+DOCKER_CONFIG_PATH = "/docker-config.yml"
+if Path(DOCKER_CONFIG_PATH).exists():
+    logger = logging.getLogger(__name__)
+    logger.info(f"Using existing configuration file: {DOCKER_CONFIG_PATH}")
+    with open(DOCKER_CONFIG_PATH, 'r', encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+    with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=True, indent=2, allow_unicode=True)
+    sys.exit(0)
+
 # Required database configuration
 REQUIRED_DB_CONFIG = {
     "spring": {
