@@ -18,8 +18,10 @@ RUN pip3 install --break-system-packages pyyaml tqdm
 WORKDIR /app
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 COPY config-generator.py /config-generator.py
+COPY src/main/resources/application.yml /application.yml
 RUN chmod +x /docker-entrypoint.sh
 
 COPY --from=builder /build/target/esup-signature.war /esup-signature.war
+
 
 ENTRYPOINT ["/docker-entrypoint.sh"]

@@ -3,6 +3,7 @@
 Convert nested environment variables to YAML templates.
 Reads environment variables with double underscore separators and converts them
 to nested YAML structure with proper data type detection.
+Only includes values that override the defaults from application.yml.
 """
 
 import os
@@ -14,6 +15,7 @@ from tqdm import tqdm
 from typing import Dict, Any, Union
 
 # Configuration constants
+DEFAULT_CONFIG_PATH = "/application.yml"
 OUTPUT_FILE = "/tmp/application-docker.yml"
 ENV_SEPARATOR = "__"
 YAML_KEY_SEPARATOR = "-"
@@ -28,6 +30,23 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+
+def load_default_config() -> Dict[str, Any]:
+    """
+    Load default configuration from application.yml
+    """
+    try:
+        config_path = Path(DEFAULT_CONFIG_PATH)
+        if not config_path.exists():
+            logger.error(f"Default configuration file not found at {DEFAULT_CONFIG_PATH}")
+            sys.exit(1)
+            
+        with open(config_path, 'r', encoding='utf-8') as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        logger.error(f"Failed to load default configuration: {e}")
+        sys.exit(1)
 
 
 def convert_key_format(env_key: str) -> str:
@@ -74,33 +93,52 @@ def detect_data_type(value: str) -> Union[str, int, float, bool]:
     return value
 
 
-def set_nested_dict(nested_dict: Dict[str, Any], keys: list, value: Any) -> None:
+def get_nested_value(config_dict: Dict[str, Any], keys: list) -> Any:
+    """
+    Get a value from a nested dictionary using a list of keys.
+    """
+    current = config_dict
+    for key in keys:
+        if not isinstance(current, dict) or key not in current:
+            return None
+        current = current[key]
+    return current
+
+
+def set_nested_dict(nested_dict: Dict[str, Any], keys: list, value: Any, default_config: Dict[str, Any]) -> None:
     """
     Set a value in a nested dictionary using a list of keys.
+    Only sets the value if it differs from the default configuration.
     """
     try:
-        current = nested_dict
-        for key in keys[:-1]:
-            if key not in current:
-                current[key] = {}
-            elif not isinstance(current[key], dict):
-                logger.error(f"Conflict: '{key}' already exists as non-dict value")
-                raise ValueError(f"Key conflict at '{key}'")
-            current = current[key]
-        
-        # Set the final value with type detection
-        final_key = keys[-1]
+        # Get the default value
+        default_value = get_nested_value(default_config, keys)
         typed_value = detect_data_type(value)
-        current[final_key] = typed_value
+        
+        # Only set if value differs from default
+        if typed_value != default_value:
+            current = nested_dict
+            for key in keys[:-1]:
+                if key not in current:
+                    current[key] = {}
+                elif not isinstance(current[key], dict):
+                    logger.error(f"Conflict: '{key}' already exists as non-dict value")
+                    raise ValueError(f"Key conflict at '{key}'")
+                current = current[key]
+            
+            # Set the final value
+            current[keys[-1]] = typed_value
+            logger.debug(f"Setting override: {'.'.join(keys)} = {typed_value} (default was {default_value})")
         
     except Exception as e:
         logger.error(f"Failed to set nested dict for keys {keys}: {e}")
         raise
 
 
-def parse_environment_variables() -> Dict[str, Any]:
+def parse_environment_variables(default_config: Dict[str, Any]) -> Dict[str, Any]:
     """
     Parse environment variables and convert to nested dictionary structure.
+    Only includes values that override the defaults.
     """
     nested_config = {}
     env_vars = [(k, v) for k, v in os.environ.items() if ENV_SEPARATOR in k]
@@ -119,8 +157,8 @@ def parse_environment_variables() -> Dict[str, Any]:
             
             logger.debug(f"Converting {env_key} -> {'.'.join(yaml_keys)} = {env_value}")
             
-            # Set in nested dictionary
-            set_nested_dict(nested_config, yaml_keys, env_value)
+            # Set in nested dictionary if it overrides default
+            set_nested_dict(nested_config, yaml_keys, env_value, default_config)
             
         except Exception as e:
             logger.error(f"Failed to process environment variable '{env_key}': {e}")
@@ -161,11 +199,15 @@ def main():
     try:
         logger.info("Starting environment variables to YAML conversion")
         
+        # Load default configuration
+        default_config = load_default_config()
+        logger.info("Loaded default configuration from application.yml")
+        
         # Parse environment variables
-        config_dict = parse_environment_variables()
+        config_dict = parse_environment_variables(default_config)
         
         if not config_dict:
-            logger.warning("No configuration generated - no matching environment variables found")
+            logger.warning("No configuration overrides found - no matching environment variables")
             return
         
         # Write to YAML file
