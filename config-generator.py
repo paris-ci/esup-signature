@@ -8,6 +8,7 @@ Only includes values that override the defaults from application.yml.
 To delete entire sections, use the DELETE__ prefix:
 DELETE__SPRING__LDAP will remove the entire spring.ldap section
 DELETE__LDAP will remove the entire ldap section
+The root node will be kept intact with an empty value.
 """
 
 import os
@@ -132,9 +133,9 @@ def get_nested_value(config_dict: Dict[str, Any], keys: list) -> Any:
     return current
 
 
-def delete_nested_key(config_dict: Dict[str, Any], keys: list) -> None:
+def clear_nested_dict(config_dict: Dict[str, Any], keys: list) -> None:
     """
-    Delete a key from a nested dictionary using a list of keys.
+    Clear a nested dictionary section while keeping the root node.
     """
     if not keys:
         return
@@ -146,8 +147,9 @@ def delete_nested_key(config_dict: Dict[str, Any], keys: list) -> None:
         current = current[key]
     
     if isinstance(current, dict) and keys[-1] in current:
-        del current[keys[-1]]
-        logger.debug(f"Deleted key: {'.'.join(keys)}")
+        # Instead of deleting, set to empty dict to keep the root node
+        current[keys[-1]] = {}
+        logger.debug(f"Cleared section: {'.'.join(keys)}")
 
 
 def set_nested_dict(nested_dict: Dict[str, Any], keys: list, value: Any, default_config: Dict[str, Any]) -> None:
@@ -180,7 +182,7 @@ def set_nested_dict(nested_dict: Dict[str, Any], keys: list, value: Any, default
         raise
 
 
-def parse_environment_variables(default_config: Dict[str, Any]) -> tuple[Dict[str, Any], List[List[str]]]:
+def parse_environment_variables() -> tuple[Dict[str, Any], List[List[str]]]:
     """
     Parse environment variables and convert to nested dictionary structure.
     Returns a tuple of (config_dict, keys_to_delete)
@@ -212,8 +214,8 @@ def parse_environment_variables(default_config: Dict[str, Any]) -> tuple[Dict[st
             
             logger.debug(f"Converting {env_key} -> {'.'.join(yaml_keys)} = {env_value}")
             
-            # Set in nested dictionary if it overrides default
-            set_nested_dict(nested_config, yaml_keys, env_value, default_config)
+            # Set in nested dictionary
+            set_nested_dict(nested_config, yaml_keys, env_value, {})
             
         except Exception as e:
             logger.error(f"Failed to process environment variable '{env_key}': {e}")
@@ -222,13 +224,20 @@ def parse_environment_variables(default_config: Dict[str, Any]) -> tuple[Dict[st
     return nested_config, keys_to_delete
 
 
-def merge_configs(env_config: Dict[str, Any], default_config: Dict[str, Any], keys_to_delete: List[List[str]]) -> Dict[str, Any]:
+def process_config(default_config: Dict[str, Any], env_config: Dict[str, Any], keys_to_delete: List[List[str]]) -> Dict[str, Any]:
     """
-    Merge environment configuration with default configuration,
-    ensuring required database configuration is present.
+    Process the configuration in the correct order:
+    1. Start with default config
+    2. Apply deletions (keeping root nodes)
+    3. Apply environment variables
+    4. Ensure required database configuration
     """
-    # Start with the default configuration
-    merged_config = default_config.copy()
+    # Start with a copy of the default configuration
+    final_config = default_config.copy()
+    
+    # Apply deletions first (keeping root nodes)
+    for keys in keys_to_delete:
+        clear_nested_dict(final_config, keys)
     
     # Deep merge the environment configuration
     def deep_merge(source, destination):
@@ -240,17 +249,13 @@ def merge_configs(env_config: Dict[str, Any], default_config: Dict[str, Any], ke
             else:
                 destination[key] = value
     
-    # Merge environment config
-    deep_merge(env_config, merged_config)
-    
-    # Delete marked sections
-    for keys in keys_to_delete:
-        delete_nested_key(merged_config, keys)
+    # Apply environment config
+    deep_merge(env_config, final_config)
     
     # Ensure required database configuration is present
-    deep_merge(REQUIRED_DB_CONFIG, merged_config)
+    deep_merge(REQUIRED_DB_CONFIG, final_config)
     
-    return merged_config
+    return final_config
 
 
 def write_yaml_file(config_dict: Dict[str, Any], output_path: str) -> None:
@@ -260,16 +265,19 @@ def write_yaml_file(config_dict: Dict[str, Any], output_path: str) -> None:
     try:
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        yaml_config_str = yaml.dumps(
+            config_dict,
+            default_flow_style=False,
+            sort_keys=True,
+            indent=2,
+            allow_unicode=True
+        )
+
+        logger.debug(f"YAML configuration:\n{yaml_config_str}")
         
         with open(output_file, 'w', encoding='utf-8') as f:
-            yaml.dump(
-                config_dict,
-                f,
-                default_flow_style=False,
-                sort_keys=True,
-                indent=2,
-                allow_unicode=True
-            )
+            f.write(yaml_config_str)
         
         logger.info(f"Successfully wrote YAML configuration to {output_path}")
         
@@ -290,10 +298,10 @@ def main():
         logger.info("Loaded default configuration from application.yml")
         
         # Parse environment variables
-        env_config, keys_to_delete = parse_environment_variables(default_config)
+        env_config, keys_to_delete = parse_environment_variables()
         
-        # Merge configurations
-        final_config = merge_configs(env_config, default_config, keys_to_delete)
+        # Process configurations in the correct order
+        final_config = process_config(default_config, env_config, keys_to_delete)
         
         # Write to YAML file
         write_yaml_file(final_config, OUTPUT_FILE)
@@ -303,6 +311,7 @@ def main():
         # Print summary
         total_keys = sum(len(str(final_config).split()) for _ in [final_config])
         logger.info(f"Processed configuration with {len(final_config)} top-level sections")
+
         
     except Exception as e:
         logger.error(f"Conversion failed: {e}")
