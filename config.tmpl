@@ -3,7 +3,7 @@
 {{- range $key, $value := .Env -}}
   {{- if contains "__" $key -}}
     {{- $parts := split $key "__" -}}
-    {{- $prefix := lower (index $parts 0) -}}
+    {{- $prefix := strings.ToLower (index $parts 0) -}}
     {{- $rest := slice $parts 1 -}}
     {{- $yamlKey := printf "%s:%s" $prefix (join $rest ":") -}}
     {{- $_ := set $config $yamlKey $value -}}
