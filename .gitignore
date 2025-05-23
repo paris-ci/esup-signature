@@ -1,4 +1,6 @@
 *
+!config.tmpl
+!docker-entrypoint.sh
 .gitlab-ci.yml
 !.gitignore
 !src/
