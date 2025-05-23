@@ -1,12 +1,12 @@
 {{- /* Convert environment variables to YAML */ -}}
 {{- $config := dict -}}
 {{- range $key, $value := .Env -}}
-  {{- if contains "__" $key -}}
-    {{- $parts := split $key "__" -}}
+  {{- if strings.Contains $key "__" -}}
+    {{- $parts := strings.Split $key "__" -}}
     {{- $prefix := strings.ToLower (index $parts 0) -}}
-    {{- $rest := slice $parts 1 -}}
-    {{- $yamlKey := printf "%s:%s" $prefix (join $rest ":") -}}
-    {{- $_ := set $config $yamlKey $value -}}
+    {{- $rest := coll.Slice $parts 1 -}}
+    {{- $yamlKey := printf "%s:%s" $prefix (strings.Join $rest ":") -}}
+    {{- $_ := set $config $yamlKey (toString $value) -}}
   {{- end -}}
 {{- end -}}
 
