@@ -21,6 +21,28 @@ ENV_SEPARATOR = "__"
 YAML_KEY_SEPARATOR = "-"
 LOG_LEVEL = logging.INFO
 
+# Required database configuration
+REQUIRED_DB_CONFIG = {
+    "spring": {
+        "datasource": {
+            "driver-class-name": "org.postgresql.Driver",
+            "url": "jdbc:postgresql://db:5432/esupsignature",
+            "username": "esupsignature",
+            "password": "esup",
+            "hikari": {
+                "auto-commit": False
+            }
+        },
+        "jpa": {
+            "hibernate": {
+                "ddl-auto": "update"
+            },
+            "show-sql": False,
+            "open-in-view": False
+        }
+    }
+}
+
 # Setup logging
 logging.basicConfig(
     level=LOG_LEVEL,
@@ -167,6 +189,33 @@ def parse_environment_variables(default_config: Dict[str, Any]) -> Dict[str, Any
     return nested_config
 
 
+def merge_configs(env_config: Dict[str, Any], default_config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Merge environment configuration with default configuration,
+    ensuring required database configuration is present.
+    """
+    # Start with the default configuration
+    merged_config = default_config.copy()
+    
+    # Deep merge the environment configuration
+    def deep_merge(source, destination):
+        for key, value in source.items():
+            if isinstance(value, dict):
+                if key not in destination:
+                    destination[key] = {}
+                deep_merge(value, destination[key])
+            else:
+                destination[key] = value
+    
+    # Merge environment config
+    deep_merge(env_config, merged_config)
+    
+    # Ensure required database configuration is present
+    deep_merge(REQUIRED_DB_CONFIG, merged_config)
+    
+    return merged_config
+
+
 def write_yaml_file(config_dict: Dict[str, Any], output_path: str) -> None:
     """
     Write configuration dictionary to YAML file.
@@ -204,20 +253,19 @@ def main():
         logger.info("Loaded default configuration from application.yml")
         
         # Parse environment variables
-        config_dict = parse_environment_variables(default_config)
+        env_config = parse_environment_variables(default_config)
         
-        if not config_dict:
-            logger.warning("No configuration overrides found - no matching environment variables")
-            return
+        # Merge configurations
+        final_config = merge_configs(env_config, default_config)
         
         # Write to YAML file
-        write_yaml_file(config_dict, OUTPUT_FILE)
+        write_yaml_file(final_config, OUTPUT_FILE)
         
         logger.info(f"Conversion completed successfully. Output written to {OUTPUT_FILE}")
         
         # Print summary
-        total_keys = sum(len(str(config_dict).split()) for _ in [config_dict])
-        logger.info(f"Processed configuration with {len(config_dict)} top-level sections")
+        total_keys = sum(len(str(final_config).split()) for _ in [final_config])
+        logger.info(f"Processed configuration with {len(final_config)} top-level sections")
         
     except Exception as e:
         logger.error(f"Conversion failed: {e}")
