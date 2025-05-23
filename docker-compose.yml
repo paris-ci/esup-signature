@@ -1,21 +1,137 @@
-version: '3'
+version: '3.8'
+
 services:
-  postgres:
-    image: postgres
-    ports:
-      - 5432
+  esup-signature:
+    build: .
     environment:
+      # Global configuration
+      GLOBAL__ROOT_URL: "https://esup-signature.univ-ville.fr"  # Adresse d'accès à votre instance
+      GLOBAL__DOMAIN: "univ-ville.fr"
+      GLOBAL__NEXU_URL: "https://localhost:9895"
+      GLOBAL__NEXU_VERSION: "1.23-SNAPSHOT"
+      GLOBAL__NEXU_DOWNLOAD_URL: "/downloads/nexu-bundle.zip"
+      GLOBAL__HIDE_WIZARD: "false"  # Désactiver le bouton "Assistant de création de demande"
+      GLOBAL__HIDE_WIZARD_WORKFLOW: "false"  # Désactiver le bouton "Assistant de création de circuit"
+      GLOBAL__HIDE_AUTO_SIGN: "false"  # Désactiver le bouton "Auto signature"
+      GLOBAL__HIDE_SEND_SIGN_REQUEST: "false"  # Désactiver le bouton "Demander une signature"
+      GLOBAL__ENABLE_SU: "false"  # Activer ou non le switch user
+      GLOBAL__ENABLE_SPLASH: "true"  # Activer ou non le message d'accueil
+      GLOBAL__APPLICATION_EMAIL: "esup.signature@univ-ville.fr"  # Adresse du compte système
+      GLOBAL__HOURS_BEFORE_REFRESH_NOTIF: "24"  # Nombre d'heures entre deux relances
+      GLOBAL__SHARE_MODE: "3"  # 0=délégations désactivées, 1=force signature délégué, 2=force signature mandant, 3=choix utilisateur
+      GLOBAL__RETURN_TO_HOME_AFTER_SIGN: "true"  # Forcer le retour à la page d'accueil après signature
+      GLOBAL__INFINITE_SCROLLING: "true"  # Activer l'infinite scrolling
+      GLOBAL__SIGNED_SUFFIX: "_signé"  # suffix ajouté au fichiers signés
+      GLOBAL__NAMING_TEMPLATE: "[title]"  # Template de renommage des fichiers
+      GLOBAL__TRASH_KEEP_DELAY: "-1"  # Délai de conservation dans la corbeille en jours (-1 non actif)
+      GLOBAL__DISABLE_CERT_STORAGE: "false"  # Activer/Désactiver stockage certificats
+      GLOBAL__SMS_REQUIRED: "true"  # Imposer la double authentification par SMS pour les externes
+      GLOBAL__OTP_VALIDITY: "1"  # Durée de validité des liens de OTP en minutes
+      GLOBAL__EXTERNAL_CAN_EDIT: "false"  # Activer les annotations pour les utilisateurs externes
+      GLOBAL__SEARCH_FOR_EXTERNAL_USERS: "false"  # Faire apparaitre les users externes dans la recherche
+
+      # Spring configuration
+      SPRING__DATASOURCE__DRIVER_CLASS_NAME: "org.postgresql.Driver"
+      SPRING__DATASOURCE__URL: "jdbc:postgresql://postgres:5432/esupsignature"
+      SPRING__DATASOURCE__PASSWORD: "esup"
+      SPRING__DATASOURCE__USERNAME: "esupsignature"
+      SPRING__DATASOURCE__HIKARI__AUTO_COMMIT: "false"
+      SPRING__JPA__HIBERNATE__DDL_AUTO: "update"
+      SPRING__JPA__SHOW_SQL: "false"
+      SPRING__JPA__OPEN_IN_VIEW: "false"
+      SPRING__MAIL__HOST: "smtp.univ-ville.fr"
+      SPRING__SERVLET__MULTIPART__ENABLED: "true"
+      SPRING__SERVLET__MULTIPART__MAX_FILE_SIZE: "1280KB"
+      SPRING__SERVLET__MULTIPART__MAX_REQUEST_SIZE: "1280KB"
+
+      # LDAP configuration
+      LDAP__BASE: "dc=univ-ville,dc=fr"
+      LDAP__PASSWORD: "********"
+      LDAP__URLS: "ldap://ldap.univ-ville.fr"
+      LDAP__USERNAME: "cn=consult,dc=univ-ville,dc=fr"
+      LDAP__SEARCH_BASE: "ou=people"
+      LDAP__GROUP_SEARCH_BASE: "ou=groups"
+      LDAP__GROUP_SEARCH_FILTER: "member={0}"
+      LDAP__USER_ID_SEARCH_FILTER: "(uid={0})"
+      LDAP__MEMBER_SEARCH_FILTER: "(&(uid={0})({1}))"
+
+      # Mail configuration
+      MAIL__FROM: "no-reply.esup-signature@univ-ville.fr"
+
+      # DSS configuration
+      DSS__CACHE_DATA_SOURCE_DRIVER_CLASS_NAME: "org.hsqldb.jdbc.JDBCDriver"
+      DSS__CACHE_DATA_SOURCE_URL: "jdbc:hsqldb:mem:cachedb"
+      DSS__CACHE_USERNAME: "sa"
+      DSS__DEFAULT_VALIDATION_POLICY: "policy/sign-constraint.xml"
+      DSS__SERVER_SIGNING_KEYSTORE_FILENAME: "validate_service.p12"
+      DSS__SERVER_SIGNING_KEYSTORE_PASSWORD: "password"
+      DSS__SERVER_SIGNING_KEYSTORE_TYPE: "PKCS12"
+      DSS__TSP_SERVERS: "http://timestamp.sectigo.com/qualified,http://tsa.belgium.be/connect"
+      DSS__LOTL_COUNTRY_CODE: "EU"
+      DSS__LOTL_URL: "https://ec.europa.eu/tools/lotl/eu-lotl.xml"
+      DSS__CHECK_REVOCATION_FOR_UNTRUSTED_CHAINS: "true"
+      DSS__MULTI_THREAD_TL_VALIDATION: "true"
+
+      # PDF configuration
+      PDF__CONVERT_TO_PDF_A: "true"
+      PDF__PATH_TO_G_S: "/usr/bin/gs"
+      PDF__PDF_A_LEVEL: "2"
+      PDF__PDF_TO_IMAGE_DPI: "72"
+      PDF__AUTO_ROTATE: "true"
+
+      # Security configuration
+      SECURITY__CAS__SERVICE: "https://esup-signature.univ-ville.fr/login/cas"
+      SECURITY__CAS__TITLE: "Compte Université (CAS)"
+      SECURITY__CAS__URL: "https://cas.univ-ville.fr"
+      SECURITY__WEB__GROUP_TO_ROLE_FILTER_PATTERN: "for.esup-signature.role.(\\w*)"
+      SECURITY__WEB__MAPPING_GROUPS_ROLES__FOR_ESUP_SIGNATURE_ADMIN: "ROLE_ADMIN"
+      SECURITY__WEB__MAPPING_GROUPS_ROLES__FOR_ESUP_SIGNATURE_USER: "ROLE_USER"
+      SECURITY__WEB__WS_ACCESS_AUTHORIZE_IPS: "127.0.0.1"
+
+      # Server configuration
+      SERVER__PORT: "8080"
+      SERVER__TOMCAT__MBEANREGISTRY__ENABLED: "true"
+      SERVER__TOMCAT__REMOTEIP__REMOTE_IP_HEADER: "X-Forwarded-For"
+
+      # Sign configuration
+      SIGN__CADES_DIGEST_ALGORITHM: "SHA256"
+      SIGN__CADES_SIGNATURE_LEVEL: "CAdES_BASELINE_LT"
+      SIGN__CONTAINER_TYPE: "ASiC_E"
+      SIGN__DEFAULT_SIGNATURE_FORM: "XAdES"
+      SIGN__PADES_DIGEST_ALGORITHM: "SHA256"
+      SIGN__PADES_SIGNATURE_LEVEL: "PAdES_BASELINE_LT"
+      SIGN__PASSWORD_TIMEOUT: "60000"
+      SIGN__SIGNATURE_PACKAGING: "ENVELOPED"
+      SIGN__XADES_DIGEST_ALGORITHM: "SHA256"
+      SIGN__XADES_SIGNATURE_LEVEL: "XAdES_BASELINE_LT"
+
+      # Logging configuration
+      LOGGING__FILE__NAME: "logs/esup-signature.log"
+      LOGGING__LEVEL__ROOT: "info"
+      LOGGING__LEVEL__ORG_ESUPPORTIL_ESUPSIGNATURE: "info"
+      LOGGING__LEVEL__ORG_VERAPDF: "error"
+      LOGGING__LEVEL__ORG_APACHE_PDFBOX: "error"
+      LOGGING__LEVEL__EU_EUROPA_ESIG_DSS: "error"
+
+      # Springdoc configuration
+      SPRINGDOC__API_DOCS__ENABLED: "true"
+      SPRINGDOC__SWAGGER_UI__ENABLED: "true"
+      SPRINGDOC__SWAGGER_UI__SUPPORTED_SUBMIT_METHODS: "[]"
+      SPRINGDOC__PACKAGES_TO_SCAN: "org.esupportail.esupsignature.web.ws"
+
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: esupsignature
       POSTGRES_USER: esupsignature
       POSTGRES_PASSWORD: esup
-      POSTGRES_DB: esupsignature
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
-  esup-signature:
-    container_name: esup-signature
-    build:
-      context: .
-      dockerfile: Dockerfile
-    links:
-      - postgres
-    image: esup-signature:latest
-    ports:
-      - 8080:8080
+volumes:
+  postgres_data:
