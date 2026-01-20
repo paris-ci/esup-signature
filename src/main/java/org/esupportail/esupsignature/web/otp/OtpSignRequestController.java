@@ -1,22 +1,23 @@
 package org.esupportail.esupsignature.web.otp;
 
 import eu.europa.esig.dss.validation.reports.Reports;
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpSession;
 import org.esupportail.esupsignature.config.GlobalProperties;
+import org.esupportail.esupsignature.dto.js.JsMessage;
 import org.esupportail.esupsignature.entity.*;
+import org.esupportail.esupsignature.entity.enums.SignLevel;
 import org.esupportail.esupsignature.entity.enums.SignRequestStatus;
 import org.esupportail.esupsignature.entity.enums.SignType;
 import org.esupportail.esupsignature.entity.enums.UiParams;
-import org.esupportail.esupsignature.exception.EsupSignatureRuntimeException;
 import org.esupportail.esupsignature.exception.EsupSignatureIOException;
 import org.esupportail.esupsignature.exception.EsupSignatureMailException;
+import org.esupportail.esupsignature.exception.EsupSignatureRuntimeException;
 import org.esupportail.esupsignature.exception.EsupSignatureUserException;
 import org.esupportail.esupsignature.service.*;
 import org.esupportail.esupsignature.service.security.PreAuthorizeService;
-import org.esupportail.esupsignature.service.utils.sign.SignService;
-import org.esupportail.esupsignature.dto.js.JsMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
@@ -25,8 +26,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
-import jakarta.annotation.Resource;
-import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -42,15 +41,10 @@ public class OtpSignRequestController {
     private static final Logger logger = LoggerFactory.getLogger(OtpSignRequestController.class);
 
     @Resource
-    private SignService signService;
-
-    @Resource
     private SignWithService signWithService;
 
     @Resource
     private DataService dataService;
-    @Autowired
-    private GlobalProperties globalProperties;
 
     @ModelAttribute("activeMenu")
     public String getActiveMenu() {
@@ -78,16 +72,27 @@ public class OtpSignRequestController {
     @Resource
     private LogService logService;
 
-    @PreAuthorize("@preAuthorizeService.signBookView(#id, #userEppn, #authUserEppn)")
     @GetMapping(value = "/signbook-redirect/{id}")
-    public String redirect(@ModelAttribute("userEppn") String userEppn, @ModelAttribute("authUserEppn") String authUserEppn, @PathVariable("id") Long id, @RequestParam(required = false) Boolean frameMode, Model model, HttpSession httpSession) throws IOException, EsupSignatureRuntimeException {
+    public String redirect(@ModelAttribute("userEppn") String userEppn, @ModelAttribute("authUserEppn") String authUserEppn, @PathVariable("id") Long id, RedirectAttributes redirectAttributes) throws IOException, EsupSignatureRuntimeException {
         SignBook signBook = signBookService.getById(id);
+        if(!preAuthorizeService.signBookView(id, userEppn, authUserEppn)) {
+            User user = userService.getByEppn(userEppn);
+            redirectAttributes.addFlashAttribute("errorMsg", "Access non autorisé");
+            if (signBook.getLiveWorkflow().getCurrentStep().getRecipients().stream().noneMatch(r -> r.getUser().getEmail().equals(user.getEmail()))) {
+                redirectAttributes.addFlashAttribute("errorMsg",
+                        "<p>L'adresse email liée à votre authentification ne correspond pas à celle indiquée dans la demande initiale.<br>\n" +
+                                "Voici l'adresse transmise par votre fournisseur d'identité :"
+                                + user.getEmail() +
+                                "</p><p>Vous pouvez soit modifier votre adresse de contact auprès de votre fournisseur d'identité, soit contacter le gestionnaire de la demande afin qu’il mette à jour l’email de contact dans la demande de signature.</p>");
+            }
+            return "redirect:/otp-access/error";
+        }
         return "redirect:/otp/signrequests/" + signBook.getSignRequests().get(0).getId();
     }
 
     @PreAuthorize("@preAuthorizeService.signRequestView(#id, #userEppn, #authUserEppn)")
     @GetMapping(value = "/{id}")
-    public String show(@ModelAttribute("userEppn") String userEppn, @ModelAttribute("authUserEppn") String authUserEppn, @PathVariable("id") Long id, @RequestParam(required = false) Boolean frameMode, Model model, HttpSession httpSession) throws IOException, EsupSignatureRuntimeException {
+    public String show(@ModelAttribute("userEppn") String userEppn, @ModelAttribute("authUserEppn") String authUserEppn, @PathVariable("id") Long id, Model model, HttpSession httpSession) throws IOException, EsupSignatureRuntimeException {
         SignRequest signRequest = signRequestService.getById(id);
         model.addAttribute("urlProfil", "otp");
         model.addAttribute("displayNotif", false);
@@ -104,29 +109,32 @@ public class OtpSignRequestController {
         model.addAttribute("attachmentAlert", attachmentAlert);
         boolean attachmentRequire = signRequestService.isAttachmentRequire(signRequest);
         model.addAttribute("attachmentRequire", attachmentRequire);
+        model.addAttribute("isCurrentUserAsSigned", signRequestService.isCurrentUserAsSigned(signRequest, userEppn));
         model.addAttribute("currentSignType", signRequest.getCurrentSignType());
         model.addAttribute("currentStepNumber", signRequest.getParentSignBook().getLiveWorkflow().getCurrentStepNumber());
         model.addAttribute("currentStepMultiSign", true);
         model.addAttribute("currentStepSingleSignWithAnnotation", true);
         if(signRequest.getParentSignBook().getLiveWorkflow().getCurrentStep() != null) {
+            model.addAttribute("currentStepMinSignLevel", signRequest.getParentSignBook().getLiveWorkflow().getCurrentStep().getMinSignLevel());
             if(signRequest.getParentSignBook().getLiveWorkflow().getCurrentStep().getWorkflowStep() != null) {
                 model.addAttribute("currentStepId", signRequest.getParentSignBook().getLiveWorkflow().getCurrentStep().getWorkflowStep().getId());
             }
             model.addAttribute("currentStepMultiSign", signRequest.getParentSignBook().getLiveWorkflow().getCurrentStep().getMultiSign());
             model.addAttribute("currentStepSingleSignWithAnnotation", signRequest.getParentSignBook().getLiveWorkflow().getCurrentStep().getSingleSignWithAnnotation());
+        } else {
+            model.addAttribute("currentStepMinSignLevel", SignLevel.simple);
         }
         model.addAttribute("nbSignRequestInSignBookParent", signRequest.getParentSignBook().getSignRequests().size());
-        List<Document> toSignDocuments = signService.getToSignDocuments(signRequest.getId());
+        List<Document> toSignDocuments = signRequestService.getToSignDocuments(signRequest.getId());
         if(toSignDocuments.size() == 1) {
             model.addAttribute("toSignDocument", toSignDocuments.get(0));
         }
         model.addAttribute("attachments", signRequestService.getAttachments(id));
         SignBook nextSignBook = signBookService.getNextSignBook(signRequest.getId(), userEppn, authUserEppn);
         model.addAttribute("nextSignBook", nextSignBook);
-        model.addAttribute("nextSignRequest", signBookService.getNextSignRequest(signRequest.getId(), userEppn, authUserEppn, nextSignBook));
+        model.addAttribute("nextSignRequest", signBookService.getNextSignRequest(signRequest.getId(), nextSignBook));
         model.addAttribute("fields", signRequestService.prefillSignRequestFields(id, userEppn));
         model.addAttribute("toUseSignRequestParams", signRequestService.getToUseSignRequestParams(id, userEppn));
-        model.addAttribute("signWiths", signWithService.getAuthorizedSignWiths(userEppn, signRequest));
         model.addAttribute("sealCertOK", signWithService.checkSealCertificat(userEppn, true));
         model.addAttribute("otp", true);
         if(!signRequest.getStatus().equals(SignRequestStatus.draft)) {
@@ -141,8 +149,9 @@ public class OtpSignRequestController {
             }
         }
         model.addAttribute("signatureIds", new ArrayList<>());
-        Reports reports = signService.validate(id);
+        Reports reports = signRequestService.validate(id);
         if(reports != null) {
+            model.addAttribute("signWiths", signWithService.getAuthorizedSignWiths(userEppn, signRequest, !reports.getSimpleReport().getSignatureIdList().isEmpty()));
             model.addAttribute("signatureIds", reports.getSimpleReport().getSignatureIdList());
             model.addAttribute("signatureIssue", false);
             for(String signatureId : reports.getSimpleReport().getSignatureIdList()) {
@@ -150,12 +159,14 @@ public class OtpSignRequestController {
                     model.addAttribute("signatureIssue", true);
                 }
             }
+        } else {
+            model.addAttribute("signWiths", signWithService.getAuthorizedSignWiths(userEppn, signRequest, false));
         }
         model.addAttribute("certificats", certificatService.getCertificatByUser(userEppn));
         boolean signable = signBookService.checkSignRequestSignable(id, userEppn, authUserEppn);
         model.addAttribute("signable", signable);
         model.addAttribute("editable", signRequestService.isEditable(id, userEppn));
-        model.addAttribute("isNotSigned", !signService.isSigned(signRequest, reports));
+        model.addAttribute("isNotSigned", !signRequestService.isSigned(signRequest, reports));
         model.addAttribute("isTempUsers", false);
         if(signRequest.getStatus().equals(SignRequestStatus.draft)) {
             model.addAttribute("steps", workflowService.getWorkflowStepsFromSignRequest(signRequest, userEppn));
@@ -230,10 +241,12 @@ public class OtpSignRequestController {
                           @RequestParam(value = "commentPageNumber", required = false) Integer commentPageNumber,
                           @RequestParam(value = "commentPosX", required = false) Integer commentPosX,
                           @RequestParam(value = "commentPosY", required = false) Integer commentPosY,
+                          @RequestParam(value = "commentWidth", required = false) Integer commentWidth,
+                          @RequestParam(value = "commentHeight", required = false) Integer commentHeight,
                           @RequestParam(value = "postit", required = false) String postit,
                           @RequestParam(value = "forceSend", required = false, defaultValue = "false") Boolean forceSend,
                           Model model) {
-        if(signRequestService.addComment(id, comment, commentPageNumber, commentPosX, commentPosY, postit, spotStepNumber, authUserEppn, userEppn, forceSend) != null) {
+        if(signRequestService.addComment(id, comment, commentPageNumber, commentPosX, commentPosY, commentWidth, commentHeight, postit, spotStepNumber, authUserEppn, userEppn, forceSend) != null) {
             model.addAttribute("message", new JsMessage("success", "Annotation ajoutée"));
         } else {
             model.addAttribute("message", new JsMessage("error", "Ajout d'emplacement non autorisé"));

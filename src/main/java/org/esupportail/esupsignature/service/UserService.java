@@ -62,33 +62,19 @@ public class UserService {
     private static final String DATE_PATTERN = "yyyy-MM-dd'T'HH:mm";
 
     private final GlobalProperties globalProperties;
-
     private final WebSecurityProperties webSecurityProperties;
-
     private final LdapPersonService ldapPersonService;
-
     private final LdapPersonLightService ldapPersonLightService;
-
     private final LdapAliasService ldapAliasService;
-
     private final LdapGroupService ldapGroupService;
-
     private final LdapOrganizationalUnitService ldapOrganizationalUnitService;
-
     private final SmsService smsService;
-
     private final ShibProperties shibProperties;
-
     private final UserRepository userRepository;
-
     private final FileService fileService;
-
     private final DocumentService documentService;
-
     private final UserListService userListService;
-
     private final ObjectMapper objectMapper;
-
     private final SignRequestParamsRepository signRequestParamsRepository;
 
     public UserService(GlobalProperties globalProperties,
@@ -125,7 +111,7 @@ public class UserService {
     }
 
     public User getByAccessToken(String accessToken) {
-        return  userRepository.findByAccessToken(accessToken).orElse(null);
+        return userRepository.findByAccessToken(accessToken).orElse(null);
     }
 
     @Transactional
@@ -338,23 +324,31 @@ public class UserService {
     @Transactional
     public User createUser(String eppn, String name, String firstName, String email, UserType userType, boolean updateCurrentUserRoles) {
         User user;
-        Optional<User> optionalUser = userRepository.findByEppn(eppn);
+        Optional<User> optionalUser = userRepository.findByEmailIgnoreCase(email);
         if (optionalUser.isPresent()) {
             user = optionalUser.get();
+            Optional<User> optionalUser2 = userRepository.findByEppn(eppn);
+            if (optionalUser2.isEmpty()) {
+                user.setEppn(eppn);
+            }
         } else {
-            optionalUser = userRepository.findByEmailIgnoreCase(email);
+            optionalUser = userRepository.findByEppn(eppn);
             if (optionalUser.isPresent()) {
                 user = optionalUser.get();
+                Optional<User> optionalUser2 = userRepository.findByEmailIgnoreCase(email);
+                if (optionalUser2.isEmpty()) {
+                    user.setEmail(email.toLowerCase());
+                }
             } else {
                 logger.info("create user with : " + eppn + ", " + name + ", " + firstName + ", " + email);
                 user = new User();
                 user.setKeystore(null);
+                user.setEppn(eppn);
+                user.setEmail(email.toLowerCase());
             }
         }
         user.setName(name);
         user.setFirstname(firstName);
-        user.setEppn(eppn);
-        user.setEmail(email.toLowerCase());
         user.setUserType(userType);
         if(updateCurrentUserRoles) {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -445,6 +439,18 @@ public class UserService {
         authUser.setReturnToHomeAfterSign(returnToHomeAfterSign);
     }
 
+    /**
+     * Vérifie si une alerte par email peut être envoyée à l'utilisateur en fonction de
+     * sa fréquence d'alerte configurée, de l'heure et de la date actuelle, ainsi que
+     * de la dernière date d'envoi d'une alerte.
+     *
+     * @param user l'utilisateur pour lequel l'état de l'alerte doit être vérifié. Cet objet
+     *             contient les informations concernant la fréquence d'alerte par email,
+     *             la date de dernier envoi d'alerte, ainsi que les préférences spécifiques
+     *             de l'utilisateur.
+     * @return true si une alerte peut être envoyée à l'utilisateur en respectant les paramètres
+     *         configurés, sinon false.
+     */
     public boolean checkEmailAlert(User user) {
         Date date = new Date();
         Calendar calendar = Calendar.getInstance();
@@ -618,6 +624,9 @@ public class UserService {
         String[] emailSplit = email.split("@");
         if (emailSplit.length > 1) {
             String domain = emailSplit[1];
+            if(globalProperties.getForcedExternalsDomainList() != null && !globalProperties.getForcedExternalsDomainList().isEmpty() && globalProperties.getForcedExternalsDomainList().contains(domain)) {
+                return UserType.external;
+            }
             if (domain.equals(globalProperties.getDomain()) && ldapPersonService != null) {
                 return UserType.ldap;
             } else if(domain.equals(globalProperties.getDomain()) && StringUtils.hasText(shibProperties.getPrincipalRequestHeader())) {
@@ -817,7 +826,24 @@ public class UserService {
                 throw new RuntimeException(e);
             }
         }
-        user.setPhone(PhoneNumberUtil.normalizeDiallableCharsOnly(phone));
+        String phoneNormalized = PhoneNumberUtil.normalizeDiallableCharsOnly(phone);
+        User checkUser = getUserByPhone(phoneNormalized);
+        if(checkUser == null) {
+            PhoneNumberUtil phoneUtil = PhoneNumberUtil.getInstance();
+            try {
+                Phonenumber.PhoneNumber number = phoneUtil.parse(phoneNormalized, "FR");
+                String national = phoneUtil.format(number, PhoneNumberUtil.PhoneNumberFormat.NATIONAL);
+                String digitsOnly = national.replaceAll("\\s+", "");
+                checkUser = getUserByPhone(digitsOnly);
+            } catch (NumberParseException e) {
+                throw new EsupSignatureRuntimeException(e.getMessage());
+            }
+        }
+        if(checkUser != null && !user.equals(checkUser)) {
+            throw new EsupSignatureRuntimeException("Le numéro de téléphone est déjà présent dans la base");
+        } else {
+            user.setPhone(phoneNormalized);
+        }
     }
 
     public List<String> getAllRoles() {
@@ -1059,7 +1085,9 @@ public class UserService {
         User user = getByEppn(userEppn);
         List<SignRequestParams> signRequestParamses = new ArrayList<>();
         try {
-            signRequestParamses = Arrays.asList(objectMapper.readValue(signRequestParamsJsonString, SignRequestParams[].class));
+            signRequestParamses = new LinkedList<>(
+                    Arrays.asList(objectMapper.readValue(signRequestParamsJsonString, SignRequestParams[].class))
+            );
             for (SignRequestParams signRequestParams : signRequestParamses) {
                 if(signRequestParams.getImageBase64() != null) {
                     try {

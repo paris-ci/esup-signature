@@ -9,7 +9,7 @@ body {
 }
 
 header {
-    z-index: 1029 !important;
+    z-index: 1031 !important;
 }
 
 #navbar {
@@ -104,7 +104,7 @@ header {
     position: absolute;
     top: 55px;
     right: 55px;
-    z-index: 2
+    z-index: 1030;
 }
 
 .btn-grid-display2 {
@@ -187,7 +187,7 @@ header {
 
 .div-scrollable {
     overflow-y: auto;
-    height: calc(100vh - 426px);
+    height: calc(100vh - 350px);
 }
 
 .page {
@@ -222,11 +222,12 @@ header {
 }
 
 .tools {
-    top: 81px;
+    top: 80px;
+    height: 50px;
     padding-top: 5px;
     background-color: white;
     width: 100%;
-    z-index: 1028;
+    z-index: 1029;
     position: fixed;
     padding-left: 10px;
 }
@@ -241,7 +242,7 @@ header {
 }
 
 #ws-tabs {
-    width: fit-content !important;
+    width: 100% !important;
     flex-wrap: nowrap !important;
 }
 
@@ -264,7 +265,7 @@ header {
     position: fixed;
     margin-left: 260px;
     width: calc(100vw - 269px);
-    z-index: 999;
+    z-index: 1029;
 }
 
 .breadcrumb-nav-full {
@@ -293,12 +294,6 @@ header {
     position: relative;
 }
 
-.crop {
-    overflow: hidden;
-    margin: 0;
-    padding-bottom: 10px;
-}
-
 #signPad {
     display:block;
     position: relative;
@@ -317,7 +312,7 @@ header {
 #pdf-progress-bar {
     width: calc(100% - 300px);
     position: fixed;
-    z-index: 1;
+    z-index: 2;
     bottom: 40px;
     opacity: 1;
     -webkit-transition:opacity 2s linear;
@@ -328,6 +323,12 @@ header {
 .pdf-alerts {
     top:130px;
     position: fixed;
-    width: calc(100% - 285px);
+    width: calc(100% - 282px);
     z-index: 999;
+}
+
+.bs-stepper-bottom {
+    clear: both;
+    display: block;
+    width: 100%;
 }

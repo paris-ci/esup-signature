@@ -3,16 +3,16 @@
 <!--/*@thymesVar id="workflow" type="org.esupportail.esupsignature.entity.Workflow"*/-->
     <div class="modal-header">
         <h3 class="modal-title" id="fastSignRequestLabel">Signer un document présent sur votre poste de travail</h3>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close" title="Fermer" data-bs-dismiss="modal" aria-label="Close"></button>
     </div>
     <div class="modal-body">
         <form id="start-workflow-form" enctype="multipart/form-data">
             <div class="col-lg-12">
                 <div class="form-group mb-3">
                     <label class="form-label" for="multipartFiles">Choix des fichiers à signer *</label>
-                    <input id="multipartFiles" name="multipartFiles" type="file" multiple="multiple" th:accept="${globalProperties.pdfOnly} ? 'application/pdf' : ''" required>
+                    <input tabindex="500" id="multipartFiles" name="multipartFiles" type="file" multiple="multiple" th:accept="${globalProperties.pdfOnly} ? 'application/pdf' : ''" required>
                 </div>
-                <input type="hidden" name="signType" value="pdfImageStamp">
+                <input type="hidden" name="signType" value="signature">
             </div>
             <button type="submit" id="fast-form-submit" class="d-none"></button>
         </form>
@@ -20,7 +20,7 @@
     <div class="modal-footer">
         <button type="button" id="fast-form-cancel" class="btn btn-secondary float-start d-none" onclick="window.location.reload();">Annuler</button>
         <button type="button" id="fast-form-close" class="btn btn-secondary float-start" data-bs-dismiss="modal">Annuler</button>
-        <button type="button" id="fast-sign-button" class="btn btn-success float-end">
+        <button type="button" id="fast-sign-button" class="btn btn-success float-end" autofocus>
             <div class="send-form-spinner spinner-border d-none" style="width: 1rem; height: 1rem;">
             </div>
             Valider

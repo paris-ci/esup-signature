@@ -1,10 +1,12 @@
 package org.esupportail.esupsignature.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import jakarta.validation.constraints.NotNull;
-import org.esupportail.esupsignature.entity.enums.SignType;
-
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
+import org.esupportail.esupsignature.entity.enums.SignLevel;
+import org.esupportail.esupsignature.entity.enums.SignType;
+import org.springframework.util.StringUtils;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -25,6 +27,8 @@ public class LiveWorkflowStep {
     )
     private List<Recipient> recipients = new ArrayList<>();
 
+    private String description;
+
     private Boolean allSignToComplete = false;
 
     private Boolean attachmentAlert = false;
@@ -42,9 +46,19 @@ public class LiveWorkflowStep {
 
     private Boolean autoSign = false;
 
+    private Boolean sealVisa = false;
+
     @NotNull
     @Enumerated(EnumType.STRING)
     private SignType signType;
+
+    @Enumerated(EnumType.STRING)
+    private SignLevel minSignLevel;
+
+    @Enumerated(EnumType.STRING)
+    private SignLevel maxSignLevel;
+
+    private Boolean convertToPDFA = true;
 
     @ManyToMany(fetch = FetchType.LAZY, cascade = CascadeType.DETACH)
     private List<SignRequestParams> signRequestParams = new ArrayList<>();
@@ -66,6 +80,17 @@ public class LiveWorkflowStep {
 
     public void setRecipients(List<Recipient> recipients) {
         this.recipients = recipients;
+    }
+
+    public String getDescription() {
+        if(description == null && workflowStep != null && StringUtils.hasText(workflowStep.getDescription())) {
+            return workflowStep.getDescription();
+        }
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
     }
 
     public Boolean getAllSignToComplete() {
@@ -143,6 +168,24 @@ public class LiveWorkflowStep {
         this.signType = signType;
     }
 
+    public SignLevel getMinSignLevel() {
+        if(minSignLevel == null) return SignLevel.simple;
+        return minSignLevel;
+    }
+
+    public void setMinSignLevel(SignLevel signLevel) {
+        this.minSignLevel = signLevel;
+    }
+
+    public SignLevel getMaxSignLevel() {
+        if(maxSignLevel == null) return SignLevel.qualified;
+        return maxSignLevel;
+    }
+
+    public void setMaxSignLevel(SignLevel maxSignLevel) {
+        this.maxSignLevel = maxSignLevel;
+    }
+
     public List<SignRequestParams> getSignRequestParams() {
         return signRequestParams;
     }
@@ -161,5 +204,23 @@ public class LiveWorkflowStep {
 
     public List<User> getUsers() {
         return recipients.stream().map(Recipient::getUser).collect(Collectors.toList());
+    }
+
+    public Boolean getSealVisa() {
+        if(sealVisa == null) return false;
+        return sealVisa;
+    }
+
+    public void setSealVisa(Boolean sealVisa) {
+        this.sealVisa = sealVisa;
+    }
+
+    public Boolean getConvertToPDFA() {
+        if(convertToPDFA == null) return true;
+        return convertToPDFA;
+    }
+
+    public void setConvertToPDFA(Boolean convertToPDFA) {
+        this.convertToPDFA = convertToPDFA;
     }
 }

@@ -29,6 +29,7 @@ export class WizUi {
 
     initListeners() {
         this.modal.on('hidden.bs.modal', e => this.checkOnModalClose());
+        this.modal.focus();
     }
 
     listenHelpMarkAsReadButton(btn) {
@@ -151,7 +152,15 @@ export class WizUi {
         }
         this.input.on("filebatchuploadsuccess", e => this.fastSignSubmitDatas());
         $("#send-draft-button").on('click', function() {
-            self.wizCreateSign("fast");
+            self.disableButtons();
+            let fileCount = self.input.fileinput('getFilesCount');
+            if(fileCount > 0 &&  self.recipientsEmailsSelect.slimSelect.getSelected().length > 0) {
+                self.pending = false;
+                self.wizCreateSign("fast");
+            } else {
+                $("#update-fast-sign-submit").click();
+                self.enableButtons();
+            }
         });
         this.input.on("fileuploaderror", e => function (e) {
             alert(e);
@@ -596,6 +605,14 @@ export class WizUi {
             let signType = $('#signType-' + i);
             if(signType.length) {
                 step.signType = signType.val();
+            }
+            let minSignLevel = $('#minSignLevel-' + i);
+            if(minSignLevel.length) {
+                step.minSignLevel = minSignLevel.val();
+            }
+            let sealVisa = $('#sealVisa-' + i);
+            if(sealVisa.length) {
+                step.sealVisa = sealVisa.prop("checked");
             }
             signType.on('change', function (e) {
                 if($(this).val() === "hiddenVisa") {

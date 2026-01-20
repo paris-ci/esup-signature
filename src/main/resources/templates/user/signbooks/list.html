@@ -8,7 +8,7 @@
 <head th:replace="~{fragments/head :: head}"></head>
 <script th:inline="javascript" type="module">
     import {ListSignBooksUi} from '/js/modules/ui/signbooks/ListSignBooksUi.js?version=@[(${versionApp})]@';
-    new ListSignBooksUi([[${signBooks}]], [[${statusFilter}]], [[${recipientsFilter}]], [[${workflowFilter}]], [[creatorFilter]], [[${docTitleFilter}]], [[${infiniteScrolling}]], [[${_csrf}]], "user");
+    const listSignBooksUi = new ListSignBooksUi([[${signBooks}]], [[${statusFilter}]], [[${recipientsFilter}]], [[${workflowFilter}]], [[${creatorFilter}]], [[${docTitleFilter}]], [[${infiniteScrolling}]], [[${_csrf}]], "user");
 </script>
 <body>
 <header th:replace="~{fragments/nav :: nav}"></header>
@@ -53,7 +53,7 @@
                         </a>
                     </li>
                     <li>
-                        <a th:unless="${#authorization.expression('hasRole(''ROLE_OTP'')') || #authorization.expression('hasRole(''ROLE_FRANCECONNECT'')')}" data-bs-toggle="modal" data-bs-target="#newFomModal" type="button"
+                        <a th:unless="${#authorization.expression('hasRole(''ROLE_OTP'')')}" data-bs-toggle="modal" data-bs-target="#newFomModal" type="button"
                             title="Créer une nouvelle demande"
                             class="btn-floating btn-lg bg-primary">
                             <i class="fa-solid fa-plus fa-2xl"></i>
@@ -112,7 +112,7 @@
                     </th>
                     <th class="d-none d-xxxxl-table-cell">
                         <div class="d-flex text-center">
-                            <select id="creatorFilter" class="slim-select-filter sign-request-filter" data-placeholder="Crée par" data-allow-deselect="true">
+                            <select id="creatorFilter" class="slim-select-filter sign-request-filter" data-es-check-cert="false" data-placeholder="Créateur" data-allow-deselect="true">
                                 <option data-placeholder="true"></option>
                                 <option value="all">Tout</option>
                                 <th:block th:each="creator : ${creators}">
@@ -136,6 +136,7 @@
                     </th>
                     <th class="d-none d-xxxl-table-cell"><a class="sorted" sd:pagination-sort="endDate">Date dernière modification</a></th>
                     <th class=""><a class="sorted" sd:pagination-sort="status">Statut</a></th>
+                    <th class=""><a class="sorted" sd:pagination-sort="archiveStatus"></a></th>
                     <th >Actions</th>
                 </tr>
                 </thead>
@@ -160,7 +161,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3 class="modal-title" id="checkCertSignModalLabel">Signature en masse</h3>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                <button type="button" class="btn-close" title="Fermer" data-bs-dismiss="modal" aria-label="Close">
                 </button>
             </div>
             <div class="modal-body">
@@ -179,7 +180,7 @@
                                 </th:block>
                             </th:block>
                         </select>
-                        <button id="refresh-certType" type="button" class="btn border-light-subtle" title="Actualiser la liste des types de signature"><i class="fa-solid fa-arrows-rotate"></i></button>
+                        <button id="refresh-certType" type="button" class="btn btn-primary border-light-subtle" title="Actualiser la liste des types de signature"><i class="fa-solid fa-arrows-rotate"></i></button>
                     </div>
                     <input type="text" autocomplete="username" name="username" class="d-none">
                     <input class="form-control mt-2 mb-1" autocomplete="new-password" type="password" id="password" name="password" value="" placeholder="Mot de passe du keystore" />
@@ -188,7 +189,7 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
                 <button id="launchMassSignButton" class="btn btn-success" title="Lancer la signature en masse" autofocus>
-                    <i class="fas fa-signature"></i> Lancer la signature en masse
+                    <i class="fa-solid fa-signature"></i> Lancer la signature en masse
                 </button>
             </div>
         </div>
@@ -199,7 +200,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3 class="modal-title">Créer une nouvelle demande</h3>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" title="Fermer" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div th:replace="~{fragments/new :: new}"></div>

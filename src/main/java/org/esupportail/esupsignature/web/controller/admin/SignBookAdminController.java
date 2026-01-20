@@ -1,13 +1,19 @@
 package org.esupportail.esupsignature.web.controller.admin;
 
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.esupportail.esupsignature.dto.js.JsMessage;
 import org.esupportail.esupsignature.dto.js.JsSlimSelect;
 import org.esupportail.esupsignature.dto.view.UserDto;
 import org.esupportail.esupsignature.entity.SignBook;
 import org.esupportail.esupsignature.entity.SignRequest;
 import org.esupportail.esupsignature.entity.enums.SignRequestStatus;
 import org.esupportail.esupsignature.repository.SignBookRepository;
-import org.esupportail.esupsignature.service.*;
-import org.esupportail.esupsignature.dto.js.JsMessage;
+import org.esupportail.esupsignature.service.FormService;
+import org.esupportail.esupsignature.service.SignBookService;
+import org.esupportail.esupsignature.service.UserService;
+import org.esupportail.esupsignature.service.WorkflowService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -20,7 +26,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.web.csrf.CsrfToken;
-import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
@@ -28,8 +33,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
 
-import jakarta.annotation.Resource;
-import jakarta.servlet.http.HttpServletRequest;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -41,7 +45,7 @@ public class SignBookAdminController {
 
 	private static final Logger logger = LoggerFactory.getLogger(SignBookAdminController.class);
 
-	@ModelAttribute("adminMenu")
+    @ModelAttribute("adminMenu")
 	public String getAdminMenu() {
 		return "active";
 	}
@@ -92,9 +96,9 @@ public class SignBookAdminController {
 		Page<SignBook> signBooks = signBookService.getAllSignBooks(statusFilter, workflowFilter, docTitleFilter, creatorFilter, dateFilter, pageable);
 		model.addAttribute("statusFilter", statusFilter);
 		model.addAttribute("signBooks", signBooks);
-		model.addAttribute("creators", userService.getAllUsersDto());
+//		model.addAttribute("creators", userService.getAllUsersDto());
 		model.addAttribute("nbEmpty", signBookService.countEmpty(userEppn));
-		model.addAttribute("statuses", SignRequestStatus.values());
+		model.addAttribute("statuses", SignRequestStatus.activeValues());
 		model.addAttribute("forms", formService.getAllForms());
 		model.addAttribute("workflows", workflowService.getAllWorkflows());
 		model.addAttribute("workflowFilter", workflowFilter);
@@ -145,10 +149,10 @@ public class SignBookAdminController {
 		}
 		Page<SignBook> signBooks = signBookService.getAllSignBooks(statusFilter, workflowFilter, docTitleFilter, creatorFilter, dateFilter, pageable);
 		model.addAttribute("signBooks", signBooks);
-		CsrfToken token = new HttpSessionCsrfTokenRepository().loadToken(httpServletRequest);
 		final Context ctx = new Context(Locale.FRENCH);
 		ctx.setVariables(model.asMap());
-		ctx.setVariable("_csrf", token);
+        CsrfToken token = (CsrfToken) httpServletRequest.getAttribute(CsrfToken.class.getName());
+        ctx.setVariable("_csrf", token);
 		return templateEngine.process("admin/signbooks/includes/list-elem.html", ctx);
 	}
 
@@ -195,4 +199,17 @@ public class SignBookAdminController {
 		redirectAttributes.addFlashAttribute("message", new JsMessage("info", "Restauration effectuée"));
 		return "redirect:/admin/signbooks/" + id;
 	}
+
+    @GetMapping(value = "/download-multiple", produces = "application/zip")
+    @ResponseBody
+    public void downloadMultiple(@ModelAttribute("authUserEppn") String authUserEppn, @RequestParam List<Long> ids, HttpServletResponse httpServletResponse) throws IOException {
+        try {
+            signBookService.getMultipleSignedDocuments(ids, httpServletResponse);
+            httpServletResponse.setStatus(HttpServletResponse.SC_OK);
+            httpServletResponse.flushBuffer();
+        } catch (Exception e) {
+            logger.error("error while downloading multiple documents", e);
+            httpServletResponse.sendError(404);
+        }
+    }
 }

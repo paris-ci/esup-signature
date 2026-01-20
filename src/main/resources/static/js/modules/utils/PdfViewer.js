@@ -128,17 +128,17 @@ export class PdfViewer extends EventFactory {
                 tolerance: "touch",
                 drop: function( event, ui ) {
                     if($(ui.draggable).attr("id") != null && ($(ui.draggable).attr("id").includes("cross_") || $($(ui.draggable).attr("id").includes("border_")))) {
-                        $("#border_" + $(ui.draggable).attr("id").split("_")[1]).addClass("cross-error");
+                        $("#border_" + $(ui.draggable).attr("id").split("_")[1]).addClass("cross-warning");
                     }
                 },
                 over: function( event, ui ) {
                     if($(ui.draggable).attr("id") != null && ($(ui.draggable).attr("id").includes("cross_") || $($(ui.draggable).attr("id").includes("border_")))) {
-                        $("#border_" + $(ui.draggable).attr("id").split("_")[1]).addClass("cross-error");
+                        $("#border_" + $(ui.draggable).attr("id").split("_")[1]).addClass("cross-warning");
                     }
                 },
                 out: function( event, ui ) {
                     if($(ui.draggable).attr("id") != null && ($(ui.draggable).attr("id").includes("cross_") || $($(ui.draggable).attr("id").includes("border_")))) {
-                        $("#border_" + $(ui.draggable).attr("id").split("_")[1]).removeClass("cross-error");
+                        $("#border_" + $(ui.draggable).attr("id").split("_")[1]).removeClass("cross-warning");
                     }
                 }
             });
@@ -608,7 +608,7 @@ export class PdfViewer extends EventFactory {
                             previous: 'fa fa-chevron-left',
                             next: 'fa fa-chevron-right',
                             today: 'fa fa-screenshot',
-                            clear: 'fas fa-trash-alt',
+                            clear: 'fa-solid fa-trash-alt',
                             close: 'fa fa-check'
                         },
                         toolbarPlacement: 'bottom',
@@ -639,7 +639,7 @@ export class PdfViewer extends EventFactory {
                             previous: 'fa fa-chevron-left',
                             next: 'fa fa-chevron-right',
                             today: 'fa fa-screenshot',
-                            clear: 'fas fa-trash-alt',
+                            clear: 'fa-solid fa-trash-alt',
                             close: 'fa fa-check'
                         },
                         toolbarPlacement: 'bottom',

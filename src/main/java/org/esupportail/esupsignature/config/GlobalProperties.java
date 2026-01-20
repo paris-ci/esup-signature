@@ -1,13 +1,14 @@
 package org.esupportail.esupsignature.config;
 
 import org.esupportail.esupsignature.entity.SignRequestParams;
-import org.esupportail.esupsignature.entity.enums.SignType;
+import org.esupportail.esupsignature.entity.enums.SignWith;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Configuration;
 
 import java.util.ArrayList;
 import java.util.List;
 
-//@Configuration
+@Configuration
 @ConfigurationProperties(prefix="global")
 public class GlobalProperties {
 
@@ -150,22 +151,27 @@ public class GlobalProperties {
      *  </ul>
      */
     private Integer shareMode = 0;
+
     /**
      * Activer/Désactiver la possibilité de stocker des certificats utilisateurs
      */
     private Boolean disableCertStorage = false;
+
     /**
      * Activer/Désactiver la detection de robot à la connexion
      */
     private Boolean enableCaptcha = false;
+
     /**
      * Taille maximum des uploads de fichiers en bytes
      */
     private Integer maxUploadSize = 52428800;
+
     /**
      * Nombre de jours avant alerte de suppression pour les demandes en attente (-1 non actif)
      */
     private Integer nbDaysBeforeWarning = -1;
+
     /**
      * Nombre de jours après alerte pour suppression des demandes en attente (-1 non actif)
      */
@@ -231,9 +237,19 @@ public class GlobalProperties {
     private Boolean sealForExternals = false;
 
     /**
+     * Autoriser automatiquement le certificat cachet pour les demandes internes déjà signés avec un certificat
+     */
+    private Boolean sealAuthorizedForSignedFiles = false;
+
+    /**
      *  Whitelist des domaines authorisés à obtenir le ROLE_USER pour les connexions Shibboleth
      */
     private List<String> shibUsersDomainWhiteList;
+
+    /**
+     * Liste permettant de forcer des domaines comme externes
+     */
+    private List<String> forcedExternalsDomainList;
 
     /**
      *  Adresse du web service de données externes
@@ -281,9 +297,18 @@ public class GlobalProperties {
     private Integer otpValidity = 10;
 
     /**
-     * Liste des types de signature autorisés (par défault tous les types)
+     * Liste des types de signature autorisés (par défaut tous les types).
+     * <p>
+     * Valeurs possibles :
+     * - imageStamp
+     * - userCert
+     * - groupCert
+     * - autoCert
+     * - openPkiCert
+     * - sealCert
+     * - nexuCert
      */
-    private List<SignType> authorizedSignTypes = List.of(SignType.values());
+    private List<SignWith> authorizedSignTypes = List.of(SignWith.values());
 
     /**
      *  Resolution de l’image de signature
@@ -340,7 +365,13 @@ public class GlobalProperties {
     /**
      * Activer la vérification des numéros de téléphone français pour l’OTP
      */
-    Boolean frenchPhoneNumberOnly = false;
+    private Boolean frenchPhoneNumberOnly = false;
+
+
+    /**
+     * Indique si les vérification (visas cachés) doivent être masqués dans l'interface utilisateur.
+     */
+    private Boolean hideHiddenVisa = false;
 
     public String getRootUrl() {
         return rootUrl;
@@ -670,12 +701,28 @@ public class GlobalProperties {
         this.sealForExternals = sealForExternals;
     }
 
+    public Boolean getSealAuthorizedForSignedFiles() {
+        return sealAuthorizedForSignedFiles;
+    }
+
+    public void setSealAuthorizedForSignedFiles(Boolean sealAuthorizedForSignedFiles) {
+        this.sealAuthorizedForSignedFiles = sealAuthorizedForSignedFiles;
+    }
+
     public List<String> getShibUsersDomainWhiteList() {
         return shibUsersDomainWhiteList;
     }
 
     public void setShibUsersDomainWhiteList(List<String> shibUsersDomainWhiteList) {
         this.shibUsersDomainWhiteList = shibUsersDomainWhiteList;
+    }
+
+    public List<String> getForcedExternalsDomainList() {
+        return forcedExternalsDomainList;
+    }
+
+    public void setForcedExternalsDomainList(List<String> forcedExternalsDomainList) {
+        this.forcedExternalsDomainList = forcedExternalsDomainList;
     }
 
     public String getRestExtValueUrl() {
@@ -754,11 +801,11 @@ public class GlobalProperties {
         this.otpValidity = otpValidity;
     }
 
-    public List<SignType> getAuthorizedSignTypes() {
+    public List<SignWith> getAuthorizedSignTypes() {
         return authorizedSignTypes;
     }
 
-    public void setAuthorizedSignTypes(List<SignType> authorizedSignTypes) {
+    public void setAuthorizedSignTypes(List<SignWith> authorizedSignTypes) {
         this.authorizedSignTypes = authorizedSignTypes;
     }
 
@@ -855,5 +902,13 @@ public class GlobalProperties {
 
     public void setExternalCanEdit(Boolean externalCanEdit) {
         this.externalCanEdit = externalCanEdit;
+    }
+
+    public Boolean getHideHiddenVisa() {
+        return hideHiddenVisa;
+    }
+
+    public void setHideHiddenVisa(Boolean hideHiddenVisa) {
+        this.hideHiddenVisa = hideHiddenVisa;
     }
 }

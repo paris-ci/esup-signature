@@ -12,6 +12,8 @@ public interface WorkflowDto {
 
     String getName();
 
+    String getToken();
+
     String getTitle();
 
     String getDescription();

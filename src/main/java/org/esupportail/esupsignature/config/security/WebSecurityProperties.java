@@ -15,9 +15,8 @@ public class WebSecurityProperties {
     private String groupToRoleFilterPattern;
     private Map<String, String> mappingGroupsRoles;
     private Map<String, String> groupMappingSpel;
-    private String franceConnectAcr = "eidas1";
-    private String franceConnectLogoutEndpoint;
     private List<String> excludedEmails = new ArrayList<>();
+    private List<String> jwtWsAuthorizedAudiences = new ArrayList<>();
 
     public String[] getWsAccessAuthorizeIps() {
         return wsAccessAuthorizeIps;
@@ -68,27 +67,19 @@ public class WebSecurityProperties {
         this.groupMappingSpel = groupMappingSpel;
     }
 
-    public String getFranceConnectAcr() {
-        return franceConnectAcr;
-    }
-
-    public void setFranceConnectAcr(String franceConnectAcr) {
-        this.franceConnectAcr = franceConnectAcr;
-    }
-
-    public String getFranceConnectLogoutEndpoint() {
-        return franceConnectLogoutEndpoint;
-    }
-
-    public void setFranceConnectLogoutEndpoint(String franceConnectLogoutEndpoint) {
-        this.franceConnectLogoutEndpoint = franceConnectLogoutEndpoint;
-    }
-
     public List<String> getExcludedEmails() {
         return excludedEmails;
     }
 
     public void setExcludedEmails(List<String> excludedEmails) {
         this.excludedEmails = excludedEmails;
+    }
+
+    public List<String> getJwtWsAuthorizedAudiences() {
+        return jwtWsAuthorizedAudiences;
+    }
+
+    public void setJwtWsAuthorizedAudiences(List<String> jwtWsAuthorizedAudiences) {
+        this.jwtWsAuthorizedAudiences = jwtWsAuthorizedAudiences;
     }
 }

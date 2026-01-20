@@ -1,6 +1,7 @@
 package org.esupportail.esupsignature.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import org.esupportail.esupsignature.entity.enums.ExternalAuth;
 import org.esupportail.esupsignature.entity.enums.ShareType;
 import org.springframework.format.annotation.DateTimeFormat;
 
@@ -18,9 +19,10 @@ public class Workflow {
     @SequenceGenerator(name = "hibernate_sequence", allocationSize = 1)
     private Long id;
 
-	private String name;
+    @Column(unique=true)
+    private String token;
 
-    private String title;
+	private String name;
 
     private String description;
 
@@ -102,7 +104,13 @@ public class Workflow {
 
     private Boolean externalCanEdit = false;
 
-    private Boolean autorizeClone = false;
+    private Boolean authorizeClone = false;
+
+    @Temporal(TemporalType.TIMESTAMP)
+    @DateTimeFormat(pattern = "yyyy-MM-dd'T'HH:mm")
+    private Date startArchiveDate;
+
+    private String archiveTarget;
 
     public Long getId() {
         return id;
@@ -112,20 +120,28 @@ public class Workflow {
         this.id = id;
     }
 
+    public String getToken() {
+        return token;
+    }
+
+    public void setToken(String token) {
+        this.token = token;
+    }
+
+    public String getTitle() {
+        return token;
+    }
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @Enumerated(EnumType.STRING)
+    public Set<ExternalAuth> externalAuths;
+
     public String getName() {
         return name;
     }
 
     public void setName(String name) {
         this.name = name;
-    }
-
-    public String getTitle() {
-        return title;
-    }
-
-    public void setTitle(String title) {
-        this.title = title;
     }
 
     public String getDescription() {
@@ -400,14 +416,38 @@ public class Workflow {
         this.externalCanEdit = extrenalCanEdit;
     }
 
-    public Boolean getAutorizeClone() {
-        if(autorizeClone == null) {
+    public Boolean getAuthorizeClone() {
+        if(authorizeClone == null) {
             return false;
         }
-        return autorizeClone;
+        return authorizeClone;
     }
 
-    public void setAutorizeClone(Boolean autorizeClone) {
-        this.autorizeClone = autorizeClone;
+    public void setAuthorizeClone(Boolean authorizeClone) {
+        this.authorizeClone = authorizeClone;
+    }
+
+    public Date getStartArchiveDate() {
+        return startArchiveDate;
+    }
+
+    public void setStartArchiveDate(Date startArchiveDate) {
+        this.startArchiveDate = startArchiveDate;
+    }
+
+    public String getArchiveTarget() {
+        return archiveTarget;
+    }
+
+    public void setArchiveTarget(String archiveTarget) {
+        this.archiveTarget = archiveTarget;
+    }
+
+    public Set<ExternalAuth> getExternalAuths() {
+        return externalAuths;
+    }
+
+    public void setExternalAuths(Set<ExternalAuth> externalAuths) {
+        this.externalAuths = externalAuths;
     }
 }

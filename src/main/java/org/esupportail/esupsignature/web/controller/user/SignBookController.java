@@ -3,7 +3,6 @@ package org.esupportail.esupsignature.web.controller.user;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
-import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -30,7 +29,6 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.web.csrf.CsrfToken;
-import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
@@ -51,34 +49,32 @@ public class SignBookController {
 
     private static final Logger logger = LoggerFactory.getLogger(SignBookController.class);
 
-    @Resource
-    private RecipientService recipientService;
-
-    @Resource
-    private SignWithService signWithService;
-
     @ModelAttribute("activeMenu")
     public String getActiveMenu() {
         return "signbooks";
     }
 
-    @Resource
-    private PreAuthorizeService preAuthorizeService;
+    private final RecipientService recipientService;
+    private final SignWithService signWithService;
+    private final LiveWorkflowStepService liveWorkflowStepService;
+    private final PreAuthorizeService preAuthorizeService;
+    private final WorkflowService workflowService;
+    private final SignBookService signBookService;
+    private final SignRequestService signRequestService;
+    private final FormService formService;
+    private final TemplateEngine templateEngine;
 
-    @Resource
-    private WorkflowService workflowService;
-
-    @Resource
-    private SignBookService signBookService;
-
-    @Resource
-    private SignRequestService signRequestService;
-
-    @Resource
-    private FormService formService;
-
-    @Resource
-    private TemplateEngine templateEngine;
+    public SignBookController(RecipientService recipientService, SignWithService signWithService, LiveWorkflowStepService liveWorkflowStepService, PreAuthorizeService preAuthorizeService, WorkflowService workflowService, SignBookService signBookService, SignRequestService signRequestService, FormService formService, TemplateEngine templateEngine) {
+        this.recipientService = recipientService;
+        this.signWithService = signWithService;
+        this.liveWorkflowStepService = liveWorkflowStepService;
+        this.preAuthorizeService = preAuthorizeService;
+        this.workflowService = workflowService;
+        this.signBookService = signBookService;
+        this.signRequestService = signRequestService;
+        this.formService = formService;
+        this.templateEngine = templateEngine;
+    }
 
     @GetMapping
     @PreAuthorize("@preAuthorizeService.notInShare(#userEppn, #authUserEppn)")
@@ -107,15 +103,16 @@ public class SignBookController {
         Page<SignBook> signBooks = signBookService.getSignBooks(userEppn, authUserEppn, statusFilter, recipientsFilter, workflowFilter, docTitleFilter, creatorFilter, dateFilter, pageable);
         model.addAttribute("signBooks", signBooks);
         model.addAttribute("nbEmpty", signBookService.countEmpty(userEppn));
-        model.addAttribute("statuses", SignRequestStatus.values());
+        model.addAttribute("statuses", SignRequestStatus.activeValues());
         model.addAttribute("forms", formService.getFormsByUser(userEppn, authUserEppn));
         model.addAttribute("workflows", workflowService.getWorkflowsByUser(userEppn, authUserEppn));
-        model.addAttribute("signWiths", signWithService.getAuthorizedSignWiths(userEppn));
+        model.addAttribute("signWiths", signWithService.getAuthorizedSignWiths(userEppn, false));
         model.addAttribute("sealCertOK", signWithService.checkSealCertificat(userEppn, true));
         model.addAttribute("workflowFilter", workflowFilter);
         model.addAttribute("docTitleFilter", docTitleFilter);
         model.addAttribute("dateFilter", dateFilter);
         model.addAttribute("recipientsFilter", recipientsFilter);
+        model.addAttribute("creatorFilter", creatorFilter);
         LinkedHashSet<String> workflowNames = new LinkedHashSet<>();
         if(statusFilter.isEmpty() && (workflowFilter == null || workflowFilter.equals("Hors circuit")) && docTitleFilter == null && recipientsFilter == null) {
             workflowNames.addAll(signBookService.getWorkflowNames(userEppn));
@@ -163,9 +160,9 @@ public class SignBookController {
         }
         Page<SignBook> signBooks = signBookService.getSignBooks(userEppn, authUserEppn, statusFilter, recipientsFilter, workflowFilter, docTitleFilter, creatorFilter, dateFilter, pageable);
         model.addAttribute("signBooks", signBooks);
-        CsrfToken token = new HttpSessionCsrfTokenRepository().loadToken(httpServletRequest);
         final Context ctx = new Context(Locale.FRENCH);
         ctx.setVariables(model.asMap());
+        CsrfToken token = (CsrfToken) httpServletRequest.getAttribute(CsrfToken.class.getName());
         ctx.setVariable("_csrf", token);
         return templateEngine.process("user/signbooks/includes/list-elem.html", ctx);
     }
@@ -249,8 +246,8 @@ public class SignBookController {
         SignBook signBook = signBookService.getById(id);
         if(signBook != null && (signBook.getStatus().equals(SignRequestStatus.draft) || signBook.getStatus().equals(SignRequestStatus.pending))) {
             model.addAttribute("signBook", signBook);
-            model.addAttribute("logs", signBookService.getLogsFromSignBook(signBook));
-            model.addAttribute("allSteps", signBookService.getAllSteps(signBook));
+            model.addAttribute("logs", signBookService.getLogsFromSignBook(id));
+            model.addAttribute("allSteps", signBookService.getAllSteps(id));
             model.addAttribute("workflows", workflowService.getWorkflowsByUser(authUserEppn, authUserEppn));
             return "user/signbooks/update";
         } else {
@@ -398,7 +395,7 @@ public class SignBookController {
     @GetMapping(value = "/toggle/{id}", produces = "text/html")
     public String toggle(@ModelAttribute("authUserEppn") String authUserEppn,
                          @PathVariable("id") Long id, HttpServletRequest httpServletRequest, RedirectAttributes redirectAttributes) {
-        if(signBookService.toggle(id, authUserEppn)) {
+        if(signBookService.toggleHideSignBook(id, authUserEppn)) {
             redirectAttributes.addFlashAttribute("message", new JsMessage("info", "La demande à été masquée"));
         } else {
             redirectAttributes.addFlashAttribute("message", new JsMessage("info", "La demande est de nouveau visible"));
@@ -409,18 +406,17 @@ public class SignBookController {
     @GetMapping(value = "/download-multiple", produces = "application/zip")
     @ResponseBody
     public void downloadMultiple(@ModelAttribute("authUserEppn") String authUserEppn, @RequestParam List<Long> ids, HttpServletResponse httpServletResponse) throws IOException {
-        httpServletResponse.setContentType("application/zip");
-        httpServletResponse.setStatus(HttpServletResponse.SC_OK);
-        httpServletResponse.setHeader("Content-Disposition", "attachment; filename=\"download.zip\"");
         try {
             for(Long id : ids) {
                 if(!preAuthorizeService.signBookView(id, authUserEppn, authUserEppn)) throw new EsupSignatureException("access denied");
             }
             signBookService.getMultipleSignedDocuments(ids, httpServletResponse);
+            httpServletResponse.setStatus(HttpServletResponse.SC_OK);
+            httpServletResponse.flushBuffer();
         } catch (Exception e) {
             logger.error("error while downloading multiple documents", e);
+            httpServletResponse.sendError(404);
         }
-        httpServletResponse.flushBuffer();
     }
 
     @ResponseBody
@@ -501,7 +497,7 @@ public class SignBookController {
             recipientWsDtos.add(recipientWsDto);
         }
         try {
-            signRequestService.replaceRecipientsToWorkflowStep(id, stepNumber, recipientWsDtos);
+            liveWorkflowStepService.replaceRecipientsToWorkflowStep(id, stepNumber, recipientWsDtos);
         } catch (EsupSignatureException e) {
             redirectAttributes.addFlashAttribute("message", new JsMessage("error", e.getMessage()));
         }

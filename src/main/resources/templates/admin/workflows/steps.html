@@ -27,16 +27,16 @@
                     <li>
                         <a th:if="${workflow.fromCode == null || !workflow.fromCode}" role="button" title="Ajouter une étape" class="btn-floating btn-lg bg-primary" data-bs-toggle="modal" data-bs-target="#addStep">
                             <span class="fa-stack fa-1x">
-                                <i class="fas fa-shoe-prints fa-stack-1x" style="margin-top: 27px; margin-left: 10px"></i>
-                                <i class="fas fa-plus fa-stack-2x" style="margin-top: 8px; margin-left: -5px"></i>
+                                <i class="fa-solid fa-shoe-prints fa-stack-1x" style="margin-top: 27px; margin-left: 10px"></i>
+                                <i class="fa-solid fa-plus fa-stack-2x" style="margin-top: 8px; margin-left: -5px"></i>
                             </span>
                         </a>
                     </li>
                     <li>
                         <a th:if="${workflow.fromCode == null || !workflow.fromCode}" role="button" title="Ajouter une étape automatique" class="btn-floating btn-lg bg-primary" data-bs-toggle="modal" data-bs-target="#addAutoStep">
                             <span class="fa-stack fa-1x">
-                                <i class="fas fa-robot fa-stack-1x" style="margin-top: 27px; margin-left: 10px"></i>
-                                <i class="fas fa-plus fa-stack-2x" style="margin-top: 8px; margin-left: -5px"></i>
+                                <i class="fa-solid fa-robot fa-stack-1x" style="margin-top: 27px; margin-left: 10px"></i>
+                                <i class="fa-solid fa-plus fa-stack-2x" style="margin-top: 8px; margin-left: -5px"></i>
                             </span>
                         </a>
                     </li>
@@ -44,10 +44,10 @@
             </div>
             <ul class="nav nav-tabs">
                 <li class="nav-item">
-                    <a class="nav-link" th:href="'/admin/workflows/update/' + ${workflow.id}">Paramètres</a>
+                    <a class="nav-link" th:href="'/' + ${workflowRole} + '/workflows/update/' + ${workflow.id}">Paramètres</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link active" href="#" onclick="return false;">Étapes</a>
+                    <a class="nav-link active" th:href="'/' + ${workflowRole} + '/workflows/steps/' + ${workflow.id}">Étapes</a>
                 </li>
             </ul>
             <div class="card text-bg-light col-lg-11 m-2">
@@ -61,7 +61,7 @@
             <div data-bs-focus="false" class="modal fade" id="addStep"  role="dialog" aria-labelledby="addStepLabel" aria-hidden="true">
                 <div class="modal-dialog modal-lg" role="document">
                     <div class="modal-content">
-                        <form th:action="'/admin/workflows/add-step/' + ${workflow.id}" method="post">
+                        <form th:action="'/' + ${workflowRole} + '/workflows/add-step/' + ${workflow.id}" method="post">
                             <div class="modal-header">
                                 <h5 class="modal-title" id="addStepLabel">Ajouter une étape</h5>
                             </div>
@@ -82,61 +82,37 @@
                                     </label>
                                     <select data-es-check-list="false" class="auto-select-users" name="recipientsEmails" id="stepRecipientsEmails" multiple="multiple"></select>
                                 </div>
-                                <div class="form-check form-switch form-switch-md" id="all-sign-to-complete-div-1">
-                                    <input type="checkbox" class="form-check-input" name="allSignToComplete" id="all-sign-to-complete"/>
-                                    <label class="form-check-label" for="all-sign-to-complete">
-                                        <strong> Tous les participants doivent-ils signer ? </strong>
-                                        <button data-bs-target="#collapseHelpAllSign" data-bs-toggle="collapse" type="button" class="btn btn-sm btn-transparent">
-                                            <span class="fa-solid fa-info-circle text-info"></span>
-                                        </button>
-                                        <div class="collapse" id="collapseHelpAllSign">
-                                            <div class="alert alert-info">
-                                                <small>
-                                                    <ul>
-                                                        <li>
-                                                            Oui : Tous les participants doivent signer pour que la demande passe au status "Signé"
-                                                        </li>
-                                                        <li>
-                                                            Non : Une seule signature suffit
-                                                        </li>
-                                                    </ul>
-                                                </small>
-                                            </div>
+                                <div class="form-group mb-3 d-flex">
+                                    <div class="form-check form-switch form-switch-md" id="all-sign-to-complete-div-1">
+                                        <input type="checkbox" class="form-check-input" name="allSignToComplete" id="all-sign-to-complete"/>
+                                        <label class="form-check-label" for="all-sign-to-complete">
+                                            <strong> Tous les participants doivent-ils signer ? </strong>
+                                        </label>
+                                    </div>
+                                    <button data-bs-target="#collapseHelpAllSign" data-bs-toggle="collapse" type="button" class="btn btn-sm btn-transparent">
+                                        <span class="fa-solid fa-info-circle text-info"></span>
+                                    </button>
+                                    <div class="collapse" id="collapseHelpAllSign">
+                                        <div class="alert alert-info">
+                                            <ul>
+                                                <li>
+                                                    Oui : Tous les participants doivent signer pour que la demande passe au status "Signé"
+                                                </li>
+                                                <li>
+                                                    Non : Une seule signature suffit
+                                                </li>
+                                            </ul>
                                         </div>
-                                    </label>
+                                    </div>
                                 </div>
-
                                 <div class="form-group mb-3" id="_signType_div_id">
                                     <label for="signType_id">
                                         <strong> Type de signature par défaut</strong>
-                                        <button data-bs-target="#collapseHelpSignType"
-                                                data-bs-toggle="collapse" type="button"
-                                                class="btn btn-sm btn-transparent">
-                                            <i class="fa-solid fa-info-circle text-info"></i>
-                                        </button>
-                                        <div class="collapse" id="collapseHelpSignType">
-                                            <div class="alert alert-info">
-                                                <ul>
-                                                    <li>PAdES/XAdES : s'appuie sur le certificat P12
-                                                        uploader au niveau de vos paramètres
-                                                    </li>
-                                                    <li>Apposition de la signature : ajoute simplement
-                                                        l'image de votre signature sur un PDF à l'endroit voulu
-                                                    </li>
-                                                    <li>PAdES/XAdES eIDas : s'appuie l'application Esup-DSS-Client
-                                                        qui permet l'utilisation d'un certificat matériel
-                                                    </li>
-                                                    <li>Confirmation de lecture : permet de valider la
-                                                        lecture d'un document
-                                                    </li>
-                                                </ul>
-                                            </div>
-                                        </div>
                                     </label>
                                     <div class="col-lg-10">
                                         <select class="slim-select-simple" id="signType_id" name="signType" size="1">
                                             <th:block th:each="signType : ${signTypes}">
-                                                <option th:value="${signType}" th:text="#{'signbook.signtype.' + ${signType}}" th:selected="${signType.name() == 'pdfImageStamp'}"></option>
+                                                <option th:value="${signType}" th:text="#{'signbook.signtype.' + ${signType}}"></option>
                                             </th:block>
                                         </select>
                                     </div>
@@ -153,7 +129,7 @@
             <div data-bs-focus="false" class="modal fade" id="addAutoStep"  role="dialog" aria-labelledby="addAutoStepLabel" aria-hidden="true">
                 <div class="modal-dialog modal-lg" role="document">
                     <div class="modal-content">
-                        <form th:action="'/admin/workflows/add-auto-step/' + ${workflow.id}" method="post">
+                        <form th:action="'/' + ${workflowRole} + '/workflows/add-auto-step/' + ${workflow.id}" method="post">
                             <div class="modal-header">
                                 <h5 class="modal-title" id="addAutoStepLabel">Ajouter une étape Automatique</h5>
                             </div>

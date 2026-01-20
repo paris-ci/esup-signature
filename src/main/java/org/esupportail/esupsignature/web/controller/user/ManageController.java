@@ -107,7 +107,7 @@ public class ManageController {
             recipientsFilter = null;
         }
         Workflow workflow = workflowService.getById(id);
-        model.addAttribute("statuses", SignRequestStatus.values());
+        model.addAttribute("statuses", SignRequestStatus.activeValues());
         model.addAttribute("docTitleFilter", docTitleFilter);
         model.addAttribute("dateFilter", dateFilter);
         model.addAttribute("recipientsFilter", recipientsFilter);
@@ -116,7 +116,7 @@ public class ManageController {
         model.addAttribute("workflow", workflow);
         Page<SignBook> signBooks = signBookService.getSignBooksForManagers(signRequestStatus, recipientsFilter, workflow.getId(), docTitleFilter, creatorFilter, dateFilter, pageable);
         model.addAttribute("signBooks", signBooks);
-        model.addAttribute("creators", signBookService.getSignBooksForManagersCreators(workflow.getId()));
+//        model.addAttribute("creators", signBookService.getSignBooksForManagersCreators(workflow.getId()));
         return "user/manage/details";
     }
 
@@ -169,7 +169,7 @@ public class ManageController {
         Data data = dataService.addData(id, creator.getEppn());
         try {
             Map<String, String> datas = new HashMap<>();
-            signBookService.sendForSign(data.getId(), null, null, null,  creator.getEppn(), creator.getEppn(), true, datas, null, null, null, true, null);
+            signBookService.sendForSign(data.getId(), null, null, null,  creator.getEppn(), creator.getEppn(), true, datas, null, null, true, null);
         } catch (EsupSignatureRuntimeException e) {
             logger.error("error on create form instance", e);
         }

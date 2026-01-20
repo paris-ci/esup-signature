@@ -31,6 +31,7 @@ export class SignPosition extends EventFactory {
         this.signType = signType;
         this.forwardButton = $("#forward-btn");
         this.addSignButton = $("#addSignButton");
+        $("#signLaunchButton").focus();
         $("#addSignButton2").focus();
         this.faImages = ["check-solid", "times-solid", "circle-regular", "minus-solid"];
         if(localStorage.getItem("scale") != null) {
@@ -60,8 +61,11 @@ export class SignPosition extends EventFactory {
             $('#addSignButton').removeAttr('disabled');
         }
         if(this.signRequestParamses.size === 0) {
-            $("#addSignButton2").addClass("pulse-primary");
-            $("#addSignButton2").focus();
+            let addSignButton2 = $("#addSignButton2");
+            addSignButton2.removeClass("d-none");
+            addSignButton2.addClass("pulse-primary");
+            $("#signLaunchButton").removeClass("pulse-success");
+            addSignButton2.focus();
             $("#addSignButton").removeAttr("disabled");
             $(window).unbind("beforeunload");
             this.enableForwardButton();
@@ -101,14 +105,16 @@ export class SignPosition extends EventFactory {
         $("#add-sign-image").modal("show");
     }
 
-    addSign(page, restore, signImageNumber, forceSignNumber) {
-        if(this.signImages != null && this.signImages.length === 1) {
+    addSign(page, restore, signImageNumber, forceSignNumber, signField) {
+        if (this.signImages != null && this.signImages.length === 1) {
             this.popUserUi();
             return;
         }
         this.disableForwardButton();
-        $(window).bind("beforeunload",function(event) {
-            return "You have some unsaved changes";
+        $(window).bind("beforeunload", function (event) {
+            console.log("beforeunload déclenché");
+            event.preventDefault();
+            event.returnValue = "";
         });
         this.addSignButton.removeClass("pulse-primary");
         $("#addSignButton2").removeClass("pulse-primary");
@@ -208,6 +214,7 @@ export class SignPosition extends EventFactory {
             signRequestParams.turnToText();
             signRequestParams.cross.css("background-image", "");
             signRequestParams.changeSignSize(null);
+            signRequestParams.textareaPart.focus();
         }
     }
 }

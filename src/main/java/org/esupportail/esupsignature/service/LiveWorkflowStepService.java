@@ -5,13 +5,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.esupportail.esupsignature.dto.json.RecipientWsDto;
 import org.esupportail.esupsignature.dto.json.WorkflowStepDto;
 import org.esupportail.esupsignature.entity.*;
+import org.esupportail.esupsignature.entity.enums.SignLevel;
+import org.esupportail.esupsignature.entity.enums.SignType;
 import org.esupportail.esupsignature.entity.enums.UserType;
+import org.esupportail.esupsignature.exception.EsupSignatureException;
 import org.esupportail.esupsignature.exception.EsupSignatureRuntimeException;
 import org.esupportail.esupsignature.repository.LiveWorkflowStepRepository;
-import org.esupportail.esupsignature.service.utils.sign.SignService;
+import org.esupportail.esupsignature.repository.SignBookRepository;
+import org.esupportail.esupsignature.service.security.otp.OtpService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
@@ -27,15 +32,19 @@ public class LiveWorkflowStepService {
     private final LiveWorkflowStepRepository liveWorkflowStepRepository;
     private final RecipientService recipientService;
     private final UserService userService;
-    private final SignTypeService signTypeService;
-    private final SignService signService;
+    private final SignRequestService signRequestService;
+    private final SignBookRepository signBookRepository;
+    private final ActionService actionService;
+    private final OtpService otpService;
 
-    public LiveWorkflowStepService(LiveWorkflowStepRepository liveWorkflowStepRepository, RecipientService recipientService, UserService userService, SignTypeService signTypeService, SignService signService) {
+    public LiveWorkflowStepService(LiveWorkflowStepRepository liveWorkflowStepRepository, RecipientService recipientService, UserService userService, SignRequestService signRequestService, SignBookRepository signBookRepository, ActionService actionService, OtpService otpService) {
         this.liveWorkflowStepRepository = liveWorkflowStepRepository;
         this.recipientService = recipientService;
         this.userService = userService;
-        this.signTypeService = signTypeService;
-        this.signService = signService;
+        this.signRequestService = signRequestService;
+        this.signBookRepository = signBookRepository;
+        this.actionService = actionService;
+        this.otpService = otpService;
     }
 
     public LiveWorkflowStep getById(Long liveWorkflowStepId) {
@@ -52,6 +61,9 @@ public class LiveWorkflowStepService {
         }
         LiveWorkflowStep liveWorkflowStep = new LiveWorkflowStep();
         liveWorkflowStep.setWorkflowStep(workflowStep);
+        if(StringUtils.hasText(step.getDescription())) {
+            liveWorkflowStep.setDescription(step.getDescription());
+        }
         liveWorkflowStep.setRepeatable(Objects.requireNonNullElse(step.getRepeatable(), false));
         liveWorkflowStep.setMultiSign(Objects.requireNonNullElse(step.getMultiSign(), true));
         liveWorkflowStep.setSingleSignWithAnnotation(Objects.requireNonNullElse(step.getSingleSignWithAnnotation(), false));
@@ -59,16 +71,22 @@ public class LiveWorkflowStepService {
         liveWorkflowStep.setAllSignToComplete(Objects.requireNonNullElse(step.getAllSignToComplete(), false));
         liveWorkflowStep.setAttachmentAlert(Objects.requireNonNullElse(step.getAttachmentAlert(), false));
         liveWorkflowStep.setAttachmentRequire(Objects.requireNonNullElse(step.getAttachmentRequire(), false));
+        liveWorkflowStep.setSignType(step.getSignType());
+        liveWorkflowStep.setMinSignLevel(step.getMinSignLevel());
+        liveWorkflowStep.setSealVisa(step.getSealVisa());
+        liveWorkflowStep.setConvertToPDFA(step.getConvertToPDFA());
         if(step.getSignType() == null) {
-            int minLevel = 2;
-            if(signService.isSigned(signBook, null)) {
-                minLevel = 3;
+            SignLevel minLevel = SignLevel.simple;
+            if(signRequestService.isSigned(signBook, null)) {
+                minLevel = SignLevel.advanced;
             }
-            if(liveWorkflowStep.getSignType() == null || liveWorkflowStep.getSignType().getValue() < minLevel) {
-                liveWorkflowStep.setSignType(signTypeService.getLessSignType(minLevel));
+            if(liveWorkflowStep.getSignType() == null || liveWorkflowStep.getSignType().getValue() < minLevel.getValue()) {
+                liveWorkflowStep.setSignType(SignType.signature);
             }
-        } else {
-            liveWorkflowStep.setSignType(step.getSignType());
+            if(workflowStep != null) {
+                liveWorkflowStep.setMinSignLevel(workflowStep.getMinSignLevel());
+                liveWorkflowStep.setMaxSignLevel(workflowStep.getMaxSignLevel());
+            }
         }
         liveWorkflowStep.setRepeatableSignType(step.getRepeatableSignType());
         addRecipientsToWorkflowStep(signBook, liveWorkflowStep, step.getRecipients());
@@ -79,6 +97,9 @@ public class LiveWorkflowStepService {
     public LiveWorkflowStep cloneLiveWorkflowStep(SignBook signBook, WorkflowStep workflowStep, LiveWorkflowStep step) {
         LiveWorkflowStep liveWorkflowStep = new LiveWorkflowStep();
         liveWorkflowStep.setWorkflowStep(workflowStep);
+        if(StringUtils.hasText(step.getDescription())) {
+            liveWorkflowStep.setDescription(step.getDescription());
+        }
         liveWorkflowStep.setRepeatable(Objects.requireNonNullElse(step.getRepeatable(), false));
         liveWorkflowStep.setMultiSign(Objects.requireNonNullElse(step.getMultiSign(), true));
         liveWorkflowStep.setSingleSignWithAnnotation(Objects.requireNonNullElse(step.getSingleSignWithAnnotation(), false));
@@ -87,15 +108,16 @@ public class LiveWorkflowStepService {
         liveWorkflowStep.setAttachmentAlert(Objects.requireNonNullElse(step.getAttachmentAlert(), false));
         liveWorkflowStep.setAttachmentRequire(Objects.requireNonNullElse(step.getAttachmentRequire(), false));
         if(step.getSignType() == null) {
-            int minLevel = 2;
-            if(signService.isSigned(signBook, null)) {
-                minLevel = 3;
+            SignLevel minLevel = SignLevel.simple;
+            if(signRequestService.isSigned(signBook, null)) {
+                minLevel = SignLevel.advanced;
             }
-            if(liveWorkflowStep.getSignType() == null || liveWorkflowStep.getSignType().getValue() < minLevel) {
-                liveWorkflowStep.setSignType(signTypeService.getLessSignType(minLevel));
+            if(liveWorkflowStep.getSignType() == null || liveWorkflowStep.getSignType().getValue() < minLevel.getValue()) {
+                liveWorkflowStep.setSignType(SignType.signature);
             }
         } else {
             liveWorkflowStep.setSignType(step.getSignType());
+            liveWorkflowStep.setMinSignLevel(step.getMinSignLevel());
         }
         liveWorkflowStep.setRepeatableSignType(step.getRepeatableSignType());
         List<RecipientWsDto> recipientWsDtos = new ArrayList<>();
@@ -116,17 +138,18 @@ public class LiveWorkflowStepService {
                 Optional<RecipientWsDto> optionalRecipientWsDto = recipientWsDtos.stream().filter(recipientWsDto1 -> recipientWsDto1.getEmail().equals(recipientEmail)).findFirst();
                 if(optionalRecipientWsDto.isPresent()) {
                     RecipientWsDto recipientWsDto = optionalRecipientWsDto.get();
-                    if(StringUtils.hasText(recipientWsDto.getName())) {
-                        recipientUser.setName(recipientWsDto.getName());
+                    if(recipientUser.getUserType().equals(UserType.external)) {
+                        if (StringUtils.hasText(recipientWsDto.getName())) {
+                            recipientUser.setName(recipientWsDto.getName());
+                        }
+                        if (StringUtils.hasText(recipientWsDto.getFirstName())) {
+                            recipientUser.setFirstname(recipientWsDto.getFirstName());
+                        }
+                        if (StringUtils.hasText(recipientWsDto.getPhone())) {
+                            userService.updatePhone(recipientUser.getEppn(), recipientWsDto.getPhone());
+                        }
+                        recipientUser.setForceSms(recipientWsDto.getForceSms() != null && recipientWsDto.getForceSms());
                     }
-                    if(StringUtils.hasText(recipientWsDto.getFirstName())) {
-                        recipientUser.setFirstname(recipientWsDto.getFirstName());
-                    }
-                    if(StringUtils.hasText(recipientWsDto.getPhone())) {
-                        userService.updatePhone(recipientUser.getEppn(), recipientWsDto.getPhone());
-                    }
-                    recipientUser.setForceSms(recipientWsDto.getForceSms() != null && recipientWsDto.getForceSms());
-
                 }
             }
             if(liveWorkflowStep.getId() != null) {
@@ -145,7 +168,7 @@ public class LiveWorkflowStepService {
                 recipients.add(recipient);
             }
         }
-        if(liveWorkflowStep.getRecipients().isEmpty() && !liveWorkflowStep.getAutoSign()) throw new EsupSignatureRuntimeException("Les destinataires sont vides ou n'ont pas été trouvés");
+        if(liveWorkflowStep.getRecipients().isEmpty() && !liveWorkflowStep.getAutoSign()) throw new EsupSignatureRuntimeException("Les destinataires sont vides ou n'ont pas été trouvés pour le circuit " + signBook.getWorkflowName());
         return recipients;
     }
 
@@ -161,11 +184,43 @@ public class LiveWorkflowStepService {
 
     public void delete(Long id) {
         Optional<LiveWorkflowStep> liveWorkflowStep = liveWorkflowStepRepository.findById(id);
-        liveWorkflowStep.ifPresent(workflowStep -> liveWorkflowStepRepository.delete(workflowStep));
+        liveWorkflowStep.ifPresent(liveWorkflowStepRepository::delete);
     }
 
     public List<LiveWorkflowStep> getLiveWorkflowStepByWorkflowStep(WorkflowStep workflowStep) {
         return liveWorkflowStepRepository.findByWorkflowStep(workflowStep);
+    }
+
+    @Transactional
+    public void replaceRecipientsToWorkflowStep(Long signBookId, Integer stepNumber, List<RecipientWsDto> recipientWsDtos) throws EsupSignatureException {
+        SignBook signBook = signBookRepository.findById(signBookId).orElseThrow();
+        LiveWorkflowStep liveWorkflowStep = signBook.getLiveWorkflow().getLiveWorkflowSteps().get(stepNumber - 1);
+        if (signBook.getLiveWorkflow().getLiveWorkflowSteps().indexOf(liveWorkflowStep) + 1 < signBook.getLiveWorkflow().getCurrentStepNumber()) {
+            throw new EsupSignatureException("Impossible de modifier les destinataires d'une étape déjà passée");
+        }
+        List<Recipient> oldRecipients = new ArrayList<>(liveWorkflowStep.getRecipients());
+        for(Recipient oldRecipient : oldRecipients) {
+            otpService.deleteOtp(signBookId, oldRecipient.getUser());
+            if(!signBook.getViewers().contains(oldRecipient.getUser()) && signBook.getLiveWorkflow().getLiveWorkflowSteps().stream()
+                    .noneMatch(step ->
+                            step.getRecipients().stream()
+                                    .anyMatch(r -> r.getUser().equals(oldRecipient.getUser()))
+                    )) {
+                signBook.getTeam().remove(oldRecipient.getUser());
+            }
+        }
+        liveWorkflowStep.getRecipients().clear();
+        List<Recipient> recipients = addRecipientsToWorkflowStep(signBook, liveWorkflowStep, recipientWsDtos);
+        if (signBook.getLiveWorkflow().getCurrentStep().equals(liveWorkflowStep)) {
+            for (SignRequest signRequest : signBook.getSignRequests()) {
+                for (Recipient recipient : oldRecipients) {
+                    signRequest.getRecipientHasSigned().remove(recipient);
+                }
+                for (Recipient recipient : recipients) {
+                    signRequest.getRecipientHasSigned().put(recipient, actionService.getEmptyAction());
+                }
+            }
+        }
     }
 
 }

@@ -22,7 +22,7 @@
         <div id="content" class="content">
             <div class="fixed-action-btn" >
                 <a id="saveButton" th:if="${workflow.fromCode == null || !workflow.fromCode}" role="button" title="Enregistrer" class="btn-floating btn-lg bg-success"
-                   onclick="document.getElementById('updateSignBook').submit();">
+                    onclick="document.getElementById('updateSignBook').submit();">
                     <i class="fa-solid fa-save fa-2xl"></i>
                 </a>
             </div>
@@ -31,23 +31,30 @@
                     <a class="nav-link active" href="#" onclick="return false;">Paramètres</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" th:href="'/admin/workflows/steps/' + ${workflow.id}">Étapes</a>
+                    <a class="nav-link" th:href="'/' + ${workflowRole} + '/workflows/steps/' + ${workflow.id}">Étapes</a>
                 </li>
             </ul>
             <div class="card text-bg-light col-lg-11 m-2">
                 <div class="card-body">
                     <h3>WORKFLOW ID : <input type="text" readonly disabled th:value="${workflow.id}"></h3>
                     <div class="alert alert-info">Nombre de demandes pour ce circuit : <span th:text="${nbWorkflowSignRequests}"></span></div>
-                    <form th:object="${workflow}" th:action="@{/admin/workflows/update}" method="post" id="updateSignBook">
+                    <form th:object="${workflow}" th:action="@{'/' + ${workflowRole} + '/workflows/update'}" method="post" id="updateSignBook">
                         <input type="hidden" th:field="*{id}">
                         <div class="form-group mb-3">
                             <label for="description"><strong>Titre</strong></label>
                             <input id="description" class="form-control" type="text" th:field="*{description}" value="" autocomplete="on">
                         </div>
                         <div class="form-group mb-3">
-                            <label for="title"><strong>Titre technique</strong> (sans espaces, utilisé lors de l’import/export de documents)</label>
-                            <input id="title" class="form-control" type="text" th:field="*{title}" value="" autocomplete="on">
+                            <label for="token"><strong>Référence unique à passer dans {id} pour les appels web service</strong> (à saisir manuellement ou générer)</label>
+                            <div class="input-group">
+                                <input id="token" class="form-control" type="text" th:field="*{token}" autocomplete="on">
+                                <button class="btn btn-outline-secondary" type="button"
+                                        onclick="document.getElementById('token').value = ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c=> (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));">
+                                    Générer
+                                </button>
+                            </div>
                         </div>
+
                         <div class="form-group mb-3">
                             <label>
                                 <strong>Modèle de nommage des demandes</strong> (généré au moment de la création)
@@ -84,17 +91,19 @@
                         </div>
                         <div class="form-group mb-2">
                             <label><strong>Diffusion</strong></label>
-                            <div class="form-check mb-2">
+                            <div class="form-check" th:if="${#authorization.expression('hasRole(''ROLE_ADMIN'')')}">
                                 <input id="publicUsage" type="checkbox" class="form-check-input" th:field="*{publicUsage}"/>
                                 <label for="publicUsage" class="form-check-label">Visibilité publique ?</label>
                                 <div class="alert alert-info d-none"><small>Le rôle correspond au groupe autorisé à accéder à ce formulaire</small></div>
                             </div>
-                            <label for="roles" class="form-check-label">Diffusion du workflow pour les rôles</label>
-                            <select id="roles" class="slim-select-filter" data-placeholder="Choisir des roles" type="text" th:field="*{roles}" multiple>
-                                <th:block th:each="newRole : ${roles}">
-                                    <option th:text="${newRole}" th:value="${newRole}" th:selected="${#lists.contains(workflow.roles, newRole)}"></option>
-                                </th:block>
-                            </select>
+                            <div class="form-group mt-2">
+                                <label for="roles" class="form-check-label">Diffusion du workflow pour les rôles</label>
+                                <select id="roles" class="slim-select-filter" data-placeholder="Choisir des roles" type="text" th:field="*{roles}" multiple>
+                                    <th:block th:each="newRole : ${roles}">
+                                        <option th:text="${newRole}" th:value="${newRole}" th:selected="${#lists.contains(workflow.roles, newRole)}"></option>
+                                    </th:block>
+                                </select>
+                            </div>
                         </div>
                         <div class="form-group mb-3" id="managers">
                             <label for="managersSelect"><strong>Superviseur(s) du circuit</strong>
@@ -145,6 +154,14 @@
                                 </th:block>
                             </select>
                         </div>
+                        <div class="form-group mb-2">
+                            <label><strong>Authentification des externes</strong></label>
+                            <select id="externalAuth" class="form-select" data-placeholder="Choisir des modes" type="text" th:field="*{externalAuths}" multiple>
+                                <th:block th:each="externalAuth : ${externalAuths}">
+                                    <option th:text="${externalAuth}" th:value="${externalAuth}" th:selected="${#sets.contains(workflow.externalAuths, externalAuth)}"></option>
+                                </th:block>
+                            </select>
+                        </div>
                         <strong>Options</strong>
                         <div class="form-check mb-2" th:if="${globalProperties.sealCertificatDriver != null}">
                             <input id="sealAtEnd" type="checkbox" class="form-check-input" th:field="*{sealAtEnd}"/>
@@ -175,8 +192,8 @@
                             <label for="externalCanEdit" class="form-check-label">Les extérieurs peuvent mettre des annotations</label>
                         </div>
                         <div class="form-check mb-2">
-                            <input id="autorizeClone" type="checkbox" class="form-check-input" th:field="*{autorizeClone}"/>
-                            <label for="autorizeClone" class="form-check-label">Autoriser le propriétaire à relancer une nouvelle demande (clonage)</label>
+                            <input id="authorizeClone" type="checkbox" class="form-check-input" th:field="*{authorizeClone}"/>
+                            <label for="authorizeClone" class="form-check-label">Autoriser le propriétaire à relancer une nouvelle demande (clonage)</label>
                         </div>
                         <div class="form-check mb-2">
                             <input id="scanPdfMetadatas" type="checkbox" class="form-check-input" th:field="*{scanPdfMetadatas}"/>
@@ -218,7 +235,7 @@
                                 </div>
                             </div>
                             <input id="signRequestParamsDetectionPattern" name="signRequestParamsDetectionPattern"
-                                   class="form-control" type="text" th:value="${workflow.signRequestParamsDetectionPattern}" autocomplete="on">
+                                class="form-control" type="text" th:value="${workflow.signRequestParamsDetectionPattern}" autocomplete="on">
                         </div>
                         <div class="form-group mb-3">
                             <label for="mailFrom"><strong>Adresse email from</strong></label>
@@ -236,9 +253,9 @@
                         <div class="form-group mb-3" id="documentsSourceUriDiv">
                             <label for="documentsSourceUri"> <strong>Lien pour l’import automatique des documents</strong></label>
                             <input id="documentsSourceUri" name="documentsSourceUri"
-                                   class="form-control" type="text"
-                                   th:value="${workflow.documentsSourceUri}"
-                                   autocomplete="on">
+                                class="form-control" type="text"
+                                th:value="${workflow.documentsSourceUri}"
+                                autocomplete="on">
                         </div>
                         <div class="form-group mb-3">
                             <label>
@@ -278,6 +295,14 @@
                             <label for="message"><strong>Message d’accueil</strong></label>
                             <textarea id="message" class="summer-note" th:field="*{message}"></textarea>
                         </div>
+                        <div class="form-group mb-3">
+                            <strong>Paramètre d'archivage (indépendant de l'export)</strong>
+                            <br>
+                            <label for="startArchiveDate">Date à partir de laquelle on archive les demandes de ce circuit</label>
+                            <input id="startArchiveDate" class="form-control" type="datetime-local" th:value="${#dates.format(workflow.startArchiveDate, 'yyyy-MM-dd''T''HH:mm')}" name="startArchiveDate" autocomplete="off">
+                            <label for="archiveTarget">Emplacement d’archivage (si vide l’emplacement configuré dans application.yml est utilisé)</label>
+                            <input id="archiveTarget" class="form-control" type="text" th:field="*{archiveTarget}" value="" autocomplete="off">
+                        </div>
                     </form>
                     <div class="form-group mb-3">
                         <label for="documentsSourceUri"> <strong>Destination et format d'envoi des documents en fin de circuit</strong></label>
@@ -304,38 +329,55 @@
                                         <input type="text" th:value="${target.protectedTargetUri}" class="w-100" disabled />
                                     </td>
                                     <td class="text-left w-100">
-                                        <form th:id="'toggle-send-document-' + ${target.id}" th:action="'/admin/workflows/toggle-send-document/' + ${workflow.id} + '/' + ${target.id}" th:method="'put'">
+                                        <form th:id="'toggle-send-document-' + ${target.id}" th:action="'/' + ${workflowRole} + '/workflows/toggle-send-document/' + ${workflow.id} + '/' + ${target.id}" th:method="'put'">
                                             <input type="checkbox" th:checked="${target.sendDocument}" th:onclick="'$(\'#toggle-send-document-' + ${target.id} + '\').submit()'"/>
                                         </form>
                                     </td>
                                     <td class="text-left w-100">
-                                        <form th:id="'toggle-send-report-' + ${target.id}" th:action="'/admin/workflows/toggle-send-report/' + ${workflow.id} + '/' + ${target.id}" th:method="'put'">
+                                        <form th:id="'toggle-send-report-' + ${target.id}" th:action="'/' + ${workflowRole} + '/workflows/toggle-send-report/' + ${workflow.id} + '/' + ${target.id}" th:method="'put'">
                                             <input type="checkbox" th:checked="${target.sendReport}" th:onclick="'$(\'#toggle-send-report-' + ${target.id} + '\').submit()'"/>
                                         </form>
                                     </td>
                                     <td class="text-left w-100">
-                                        <form th:id="'toggle-send-attachment-' + ${target.id}" th:action="'/admin/workflows/toggle-send-attachment/' + ${workflow.id} + '/' + ${target.id}" th:method="'put'">
+                                        <form th:id="'toggle-send-attachment-' + ${target.id}" th:action="'/' + ${workflowRole} + '/workflows/toggle-send-attachment/' + ${workflow.id} + '/' + ${target.id}" th:method="'put'">
                                             <input type="checkbox" th:checked="${target.sendAttachment}" th:onclick="'$(\'#toggle-send-attachment-' + ${target.id} + '\').submit()'"/>
                                         </form>
                                     </td>
                                     <td class="text-left w-100">
-                                        <form th:id="'toggle-send-zip-' + ${target.id}" th:action="'/admin/workflows/toggle-send-zip/' + ${workflow.id} + '/' + ${target.id}" th:method="'put'">
-                                            <input type="checkbox"        th:disabled="${!target.sendDocument and !target.sendReport and !target.sendAttachment}" th:checked="${target.sendZip}" th:onclick="'$(\'#toggle-send-zip-' + ${target.id} + '\').submit()'"/>
+                                        <form th:id="'toggle-send-zip-' + ${target.id}" th:action="'/' + ${workflowRole} + '/workflows/toggle-send-zip/' + ${workflow.id} + '/' + ${target.id}" th:method="'put'">
+                                            <input type="checkbox" th:disabled="${!target.sendDocument and !target.sendReport and !target.sendAttachment}" th:checked="${target.sendZip}" th:onclick="'$(\'#toggle-send-zip-' + ${target.id} + '\').submit()'"/>
                                         </form>
                                     </td>
                                     <td>
-                                        <a th:id="'deleteSign_' + ${signImageId}" th:href="'/admin/workflows/delete-target/' + ${workflow.id} + '/' + ${target.id}" role="button" class="btn btn-sm btn-danger text-white">
-                                            <i class="fa-solid fa-trash-alt"></i>
-                                        </a>
+                                        <form th:action="'/' + ${workflowRole} + '/workflows/delete-target/' + ${workflow.id} + '/' + ${target.id}"
+                                            method="post" class="d-inline-flex align-items-center"
+                                            onsubmit="return confirm('Confirmer la suppression ?');">
+                                            <button type="submit" class="btn btn-sm btn-danger text-white">
+                                                <i class="fa-solid fa-trash-alt"></i>
+                                            </button>
+                                            <div class="form-check d-inline" >
+                                                <input type="checkbox" class="form-check-input" name="cascade" th:id="'cascade_' + ${target.id}" title="Supprime aussi de toutes les demandes non encore archivées">
+                                                <label class="form-check-label" th:for="'cascade_' + ${target.id}" title="Supprime aussi de toutes les demandes non encore archivées">En cascade</label>
+                                            </div>
+
+                                        </form>
                                     </td>
-                                    <td></td>
+                                    <td>
+                                        <form th:action="'/' + ${workflowRole} + '/workflows/restart-targets/' + ${workflow.id}" method="post"
+                                            class="d-inline-flex align-items-center"
+                                            onsubmit="return confirm('Confirmer le redémarrage des exports pour les demandes de ce circuit ?');">
+                                            <button type="submit" class="btn btn-sm btn-secondary">
+                                                <i class="fa-solid fa-refresh"></i>
+                                            </button>
+                                        </form>
+                                    </td>
                                 </tr>
                             </th:block>
                             </tbody>
                         </table>
                     </div>
 
-                    <form id="importFormSetup" th:action="'/admin/workflows/import/' + ${workflow.id} + '?' + ${_csrf.parameterName} + '=' + ${_csrf.token}" th:method="'post'" enctype="multipart/form-data">
+                    <form id="importFormSetup" th:action="'/' + ${workflowRole} + '/workflows/import/' + ${workflow.id} + '?' + ${_csrf.parameterName} + '=' + ${_csrf.token}" th:method="'post'" enctype="multipart/form-data">
                         <label class="form-label">Importer une configuration</label>
                         <div class="form-group mb-3">
                             <div class="custom-file">
@@ -344,7 +386,7 @@
                             </div>
                         </div>
                         <button id="submitFormSetup" type="submit" class="btn btn-primary">Importer le circuit</button>
-                        <a class="btn btn-primary" title="Exporter le circuit" role="button" th:href="'/admin/workflows/export/' + ${workflow.id}">
+                        <a class="btn btn-primary" title="Exporter le circuit" role="button" th:href="'/' + ${workflowRole} + '/workflows/export/' + ${workflow.id}">
                             Exporter le circuit
                         </a>
                     </form>
@@ -357,7 +399,7 @@
 <div data-bs-focus="false" class="modal fade" id="addTarget"  role="dialog" aria-hidden="true">
     <div class="modal-dialog modal-lg" role="document">
         <div class="modal-content">
-            <form class="form-group mb-3" th:action="'/admin/workflows/add-target/' + ${workflow.id}" method="post">
+            <form class="form-group mb-3" th:action="'/' + ${workflowRole} + '/workflows/add-target/' + ${workflow.id}" method="post">
                 <div class="modal-header">
                     <h3 class="modal-title">Ajout d'une destination</h3>
                 </div>
@@ -373,6 +415,32 @@
                         <br>
                         Pour plus de détails voir : <a href="https://fr.wikipedia.org/wiki/Sch%C3%A9ma_d%27URI" target="_blank">https://fr.wikipedia.org/wiki/Sch%C3%A9ma_d%27URI</a>
                     </small></p>
+                    <label>
+                        <input type="checkbox" name="sendDocument" class="form-check-input" checked>
+                        Document
+                    </label>
+                    <br>
+                    <label>
+                        <input type="checkbox" name="sendReport" class="form-check-input">
+                        Rapports
+                    </label>
+                    <br>
+                    <label>
+                        <input type="checkbox" name="sendAttachment" class="form-check-input">
+                        Pièces jointes
+                    </label>
+                    <br>
+                    <label>
+                        <input type="checkbox" name="sendZip" class="form-check-input">
+                        Envoyer zippé
+                    </label>
+                    <br><br>
+                    <p>
+                    <label>
+                        <input type="checkbox" name="cascade" class="form-check-input">
+                        Appliquer à toutes les demandes en cours non encore exportées
+                    </label>
+                    </p>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary float-end"

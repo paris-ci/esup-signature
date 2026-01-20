@@ -2,7 +2,7 @@
 <html lang="fr" xmlns:th="http://www.thymeleaf.org">
 <div class="modal-header">
     <h3  class="d-flex justify-content-center mt-4">Création de la demande personnalisée terminée</h3>
-    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    <button type="button" class="btn-close" title="Fermer" data-bs-dismiss="modal" aria-label="Close"></button>
 </div>
 <div class="modal-body">
 <div class="bs-stepper-header" role="tablist">
@@ -33,7 +33,7 @@
             <label for="workflowName"><strong>Choisir un nom pour sauvegarder le circuit en tant que modèle</strong></label>
             <input type="submit" id="save-workflow-submit" class="d-none">
             <input type="hidden" id="elementId" th:value="${signBook.id}">
-            <input type="text" id="workflowName" name="name" class="form-control required" required>
+            <input type="text" id="workflowName" name="name" class="form-control required" required autofocus>
         </div>
     </div>
 </form>

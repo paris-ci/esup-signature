@@ -5,11 +5,13 @@ import org.esupportail.esupsignature.entity.SignBook;
 import org.esupportail.esupsignature.entity.User;
 import org.esupportail.esupsignature.entity.Workflow;
 import org.esupportail.esupsignature.entity.enums.ActionType;
+import org.esupportail.esupsignature.entity.enums.ArchiveStatus;
 import org.esupportail.esupsignature.entity.enums.SignRequestStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.CrudRepository;
+import org.springframework.data.repository.query.Param;
 
 import java.util.Date;
 import java.util.List;
@@ -31,10 +33,11 @@ public interface SignBookRepository extends CrudRepository<SignBook, Long> {
             and (:docTitleFilter is null or sb.subject like concat('%', :docTitleFilter, '%'))
             and size(sb.signRequests) > 0
             and (:creatorFilter is null or sb.createBy = :creatorFilter)
-            and (:statusFilter is null or sb.status = :statusFilter)
+            and (:statusFilter is null or :statusFilter = 'deleted' or sb.status = :statusFilter)
+            and (:statusFilter is null or (sb.deleted is null and :statusFilter != 'deleted') or sb.deleted = :deleted or (:deleted is true and sb.status = 'deleted'))
             and (sb.createDate between :startDateFilter and :endDateFilter)
             """)
-    Page<SignBook> findSignBooksAllPaged(SignRequestStatus statusFilter, String workflowFilter, String docTitleFilter, User creatorFilter, Date startDateFilter, Date endDateFilter, Pageable pageable);
+    Page<SignBook> findSignBooksAllPaged(SignRequestStatus statusFilter, Boolean deleted, String workflowFilter, String docTitleFilter, User creatorFilter, Date startDateFilter, Date endDateFilter, Pageable pageable);
 
     @Query("""
             select distinct sb from SignBook sb left join sb.team team
@@ -67,7 +70,7 @@ public interface SignBookRepository extends CrudRepository<SignBook, Long> {
             and (:recipientUser is null or key(rhs).user = :recipientUser or :recipientUser in (u))
             and (:creatorFilter is null or sb.createBy = :creatorFilter)
             and (:statusFilter is null or :statusFilter = 'deleted' or sb.status = :statusFilter)
-            and (:statusFilter is null or (sb.deleted is null and :statusFilter != 'deleted') or sb.deleted = :deleted)
+            and (:statusFilter is null or (sb.deleted is null and :statusFilter != 'deleted') or sb.deleted = :deleted or (:deleted is true and sb.status = 'deleted'))
             and size(sb.signRequests) > 0
             and (sb.createDate between :startDateFilter and :endDateFilter)
             """)
@@ -80,23 +83,6 @@ public interface SignBookRepository extends CrudRepository<SignBook, Long> {
             and sb.status <> 'deleted' and (sb.deleted is null or sb.deleted != true)
             """)
     List<String> findByWorkflowNameSubjects(Long workflowId, String searchString);
-
-    @Query("""
-            select distinct sb.createBy.name as name, sb.createBy.firstname as firstname, sb.createBy.eppn as eppn, sb.createBy.email as email from SignBook sb
-            where (:workflowId is null or sb.liveWorkflow.workflow.id = :workflowId)
-            and sb.status <> 'deleted' and (sb.deleted is null or sb.deleted != true)
-            """)
-    List<UserDto> findByWorkflowNameCreators(Long workflowId);
-
-    @Query("""
-                select distinct u.name as name, u.firstname as firstname, u.eppn as eppn, u.email as email from SignBook sb
-                left join sb.liveWorkflow lw
-                left join lw.liveWorkflowSteps lws
-                left join lws.recipients r
-                left join r.user u
-                where (:workflowId is null or sb.liveWorkflow.workflow.id = :workflowId) and u is not null
-                """)
-    List<UserDto> findByWorkflowNameRecipientsUsers(Long workflowId);
 
     @Query("""
             select distinct sb from SignBook sb
@@ -198,11 +184,16 @@ public interface SignBookRepository extends CrudRepository<SignBook, Long> {
             where sb.createBy = :user
             and :user not member of sb.hidedBy
             and size(sb.signRequests) > 0
-            and sb.deleted = true
+            and (sb.deleted = true or sb.status = 'deleted')
             """)
     Page<SignBook> findByCreateByIdDeleted(User user, Pageable pageable);
 
     List<SignBook> findByStatus(SignRequestStatus signRequestStatus);
+
+    List<SignBook> findByArchiveStatus(ArchiveStatus archiveStatus);
+
+    @Query("SELECT s.id FROM SignBook s WHERE (s.status = 'completed' or s.status = 'refused' or s.status = 'exported') and (s.archiveStatus = 'none' or s.archiveStatus is null)")
+    List<Long> findIdToArchive();
 
     List<SignBook> findByDeletedIsTrue();
 
@@ -212,6 +203,9 @@ public interface SignBookRepository extends CrudRepository<SignBook, Long> {
 
     @Query("select sb from SignBook sb where sb.liveWorkflow.workflow.id = :workflowId and sb.status != 'uploading'")
     List<SignBook> findByWorkflowId(Long workflowId);
+
+    @Query("select sb from SignBook sb where (sb.liveWorkflow.workflow.id = :workflowIdLong or sb.liveWorkflow.workflow.token = :workflowIdStr) and sb.status != 'uploading'")
+    List<SignBook> findByWorkflowIdOrToken(@Param("workflowIdLong") Long workflowIdLong, @Param("workflowIdStr") String workflowIdStr);
 
     @Query("select sb from SignBook sb where size(sb.signRequests) = 0 and sb.status != 'uploading'")
     List<SignBook> findEmpties();

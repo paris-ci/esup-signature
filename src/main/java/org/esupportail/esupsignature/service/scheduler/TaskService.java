@@ -1,9 +1,10 @@
 package org.esupportail.esupsignature.service.scheduler;
 
+import jakarta.annotation.Resource;
 import org.esupportail.esupsignature.config.GlobalProperties;
 import org.esupportail.esupsignature.dss.service.DSSService;
 import org.esupportail.esupsignature.entity.SignBook;
-import org.esupportail.esupsignature.entity.enums.SignRequestStatus;
+import org.esupportail.esupsignature.entity.enums.ArchiveStatus;
 import org.esupportail.esupsignature.exception.EsupSignatureRuntimeException;
 import org.esupportail.esupsignature.repository.SignBookRepository;
 import org.esupportail.esupsignature.service.SignBookService;
@@ -13,7 +14,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.Resource;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
@@ -81,12 +81,33 @@ public class TaskService {
         this.enableDssRefreshTask = enableDssRefreshTask;
     }
 
+    /**
+     * Initialise une tâche asynchrone pour nettoyer les archives et les éléments supprimés
+     * conformément aux politiques définies.
+     *
+     * Cette méthode effectue deux nettoyages distincts :
+     * 1. Les archives : Les objets `SignBook` dont le statut est `archived` sont nettoyés.
+     * 2. La corbeille : Les objets `SignBook` marqués comme supprimés sont définitivement
+     *    effacés s'ils dépassent le délai défini dans `globalProperties.getTrashKeepDelay()`.
+     *
+     * Conditions :
+     * - Le délai de nettoyage des archives (`globalProperties.getDelayBeforeCleaning()`) doit
+     *   être supérieur ou égal à zéro.
+     * - La tâche de nettoyage ne doit pas déjà être en cours d'exécution.
+     * - Le délai de garde des éléments supprimés (`globalProperties.getTrashKeepDelay()`) doit
+     *   être supérieur ou égal à zéro pour déclencher le nettoyage de la corbeille.
+     *
+     * Journalisation :
+     * - Début et fin des processus de nettoyage.
+     * - Progrès et arrêt éventuel de chaque tâche.
+     * - Nombre d'éléments nettoyés pour les archives et la corbeille.
+     */
     @Async
     public void initCleanning(String userEppn) {
         if(globalProperties.getDelayBeforeCleaning() > -1 && !isEnableCleanTask()) {
             logger.info("start cleanning archives");
             setEnableCleanTask(true);
-            List<SignBook> signBooks = signBookRepository.findByStatus(SignRequestStatus.archived);
+            List<SignBook> signBooks = signBookRepository.findByArchiveStatus(ArchiveStatus.archived);
             int i = 0;
             for (SignBook signBook : signBooks) {
                 logger.info("clean signbook : " + signBook.getId());
@@ -126,20 +147,37 @@ public class TaskService {
     }
 
 
+    /**
+     * Lance une tâche asynchrone pour archiver les demandes de signature éligibles.
+     *
+     * Cette méthode parcourt les SignBooks identifiés comme devant être archivés
+     * selon certains critères (statut `completed`, `refused` ou `exported` et
+     * `archiveStatus` égal à `none` ou non défini). Si une demande est en cours
+     * d'exportation, elle est ignorée. En cas d'erreur lors de l'archivage d'un
+     * SignBook, celle-ci est enregistrée sans interrompre le processus global.
+     *
+     * Conditions préalables :
+     * - Une URI d'archivage (`globalProperties.getArchiveUri()`) doit être définie.
+     * - La tâche d'archivage ne doit pas déjà être en cours (`!isEnableArchiveTask()`).
+     *
+     * Journalisation :
+     * - Début et fin du processus d'archivage.
+     * - Événements notables tels que les arrêts ou erreurs spécifiques pour
+     *   chaque SignBook.
+     */
     @Async
     public void initArchive() {
         if(globalProperties.getArchiveUri() != null && !isEnableArchiveTask()) {
             setEnableArchiveTask(true);
             logger.debug("scan all signRequest to archive");
-            List<SignBook> signBooks = signBookRepository.findByStatus(SignRequestStatus.completed);
-            signBooks.addAll(signBookRepository.findByStatus(SignRequestStatus.refused));
-            signBooks.addAll(signBookRepository.findByStatus(SignRequestStatus.exported));
-            for(SignBook signBook : signBooks) {
+            List<Long> signBooksIds = signBookRepository.findIdToArchive();
+            for(Long signBookId : signBooksIds) {
                 try {
-                    if(signBookService.needToBeExported(signBook.getId())) {
+                    if(signBookService.needToBeExported(signBookId)) {
+                        /* on n’archive pas les demandes en cours d’export */
                         continue;
                     }
-                    signBookService.archiveSignRequests(signBook.getId(), "scheduler");
+                    signBookService.archiveSignRequests(signBookId, "scheduler");
                 } catch(EsupSignatureRuntimeException e) {
                     logger.error(e.getMessage());
                 }
@@ -152,6 +190,13 @@ public class TaskService {
         setEnableArchiveTask(false);
     }
 
+    /**
+     * Initialise une tâche asynchrone pour nettoyer les SignBooks en cours de téléversement.
+     *
+     * Cette méthode effectue le nettoyage en invoquant la méthode `cleanUploadingSignBooks`
+     * du service `SignBookService`. Le nettoyage est encapsulé dans une gestion d'état qui
+     * empêche plusieurs exécutions concurrentes de la tâche.
+     */
     @Async
     public void initCleanUploadingSignBooks() {
         if(!isEnableCleanUploadingSignBookTask()) {
@@ -162,6 +207,14 @@ public class TaskService {
 
     }
 
+    /**
+     * Méthode asynchrone pour initialiser le rafraîchissement DSS.
+     *
+     * Cette méthode vérifie si la tâche de rafraîchissement DSS est activée. Si elle
+     * ne l'est pas, elle l'active, exécute le processus de rafraîchissement via le
+     * service DSS, puis désactive la tâche. Une gestion des exceptions est incluse pour
+     * capturer et enregistrer toute erreur survenant lors du rafraîchissement des certificats.
+     */
     @Async
     public void initDssRefresh() {
         if(!isEnableDssRefreshTask()) {

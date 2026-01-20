@@ -18,6 +18,16 @@
             <div class="fixed-action-btns active" onmouseover="$('#addButton').toggleClass('active');" onmouseout="$('#addButton').toggleClass('active');">
                 <ul id="buttonList" class="list-unstyled">
                     <li>
+                        <a th:if="${signBook.isEditable()}" title="Ajouter un document à signer" role="button" data-bs-toggle="modal" data-bs-target="#addDoc"  class="btn-floating btn-lg text-dark bg-primary float-end">
+                            <i class="fa-solid fa-file-medical fa-2xl"></i>
+                        </a>
+                    </li>
+                    <li>
+                        <a title="Ajouter une étape au circuit" role="button" data-bs-toggle="modal" data-bs-target="#addStep" class="btn-floating btn-lg bg-primary float-end m-2">
+                            <i class="fa-solid fa-shoe-prints fa-2xl"></i>
+                        </a>
+                    </li>
+                    <li>
                         <a id="saveButton" onclick="$('#params').submit();" class="btn-floating btn-lg bg-success" title="Enregistrer">
                             <i class="fa-solid fa-save fa-2xl"></i>
                         </a>
@@ -93,7 +103,7 @@
                                                     <form id="command" th:action="'/user/signrequests/' + ${signRequest.id}" th:method="delete">
                                                         <div class="modal-header">
                                                             <h2>Attention</h2>
-                                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                                                            <button type="button" class="btn-close" title="Fermer" data-bs-dismiss="modal" aria-label="Close">
 
                                                             </button>
                                                         </div>
@@ -116,10 +126,6 @@
                     <div th:unless="${#lists.size(signBook.signRequests) > 0}" class="alert alert-secondary">
                         Aucun document à signer pour le moment
                     </div>
-                    <a th:if="${signBook.isEditable()}" title="Ajouter un document à signer" role="button" data-bs-toggle="modal" data-bs-target="#addDoc"  class="btn-floating btn-lg text-dark bg-primary float-end m-3">
-                        <i class="fa-solid fa-file-medical fa-2xl"></i>
-                    </a>
-
                 </div>
             </div>
             <th:block th:if="${signBook.status == T(org.esupportail.esupsignature.entity.enums.SignRequestStatus).draft || signBook.status == T(org.esupportail.esupsignature.entity.enums.SignRequestStatus).pending}">
@@ -135,7 +141,7 @@
             <form th:action="'/user/signbooks/add-docs/' + ${signBook.id} + '?' + ${_csrf.parameterName} + '=' + ${_csrf.token}" method="post" enctype="multipart/form-data">
                 <div class="modal-header">
                     <h3 class="modal-title" id="fastSignRequestLabel">Ajouter un document</h3>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    <button type="button" class="btn-close" title="Fermer" data-bs-dismiss="modal" aria-label="Close">
 
                     </button>
                 </div>
@@ -163,7 +169,7 @@
             <form th:action="'/user/signbooks/add-live-step/' + ${id}" method="post">
                 <div class="modal-header">
                     <h3 class="modal-title" id="exampleModalLabel">Ajouter une étape</h3>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    <button type="button" class="btn-close" title="Fermer" data-bs-dismiss="modal" aria-label="Close">
 
                     </button>
                 </div>
@@ -192,7 +198,7 @@
                         <label for="signType_id">Type de signature</label>
                         <select class="slim-select-simple" id="signType_id" name="signType" size="1">
                             <th:block th:each="signType : ${signTypes}">
-                                <option th:value="${signType}" th:text="#{'signbook.signtype.' + ${signType}}" th:selected="${signType.name() == 'pdfImageStamp'}"></option>
+                                <option th:value="${signType}" th:text="#{'signbook.signtype.' + ${signType}}"></option>
                             </th:block>
                         </select>
                     </div>
@@ -218,7 +224,7 @@
             <form th:action="'/user/signbooks/pending/' + ${id}" method="post">
                 <div class="modal-header">
                     <h3 class="modal-title">Démarrer le circuit</h3>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    <button type="button" class="btn-close" title="Fermer" data-bs-dismiss="modal" aria-label="Close">
 
                     </button>
                 </div>

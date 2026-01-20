@@ -8,8 +8,8 @@ export class SignRequestParams extends EventFactory {
     constructor(signRequestParamsModel, id, scale, page, userName, authUserName, restore, isSign, isVisa, isElec, isOtp, phone, light, signImages, scrollTop, csrf, signType) {
         super();
         this.globalProperties = JSON.parse(sessionStorage.getItem("globalProperties"));
-        this.signWidth = 150;
-        this.signHeight = 75;
+        this.signWidth = 200;
+        this.signHeight = 100;
         this.addWatermark = null;
         this.extraText = "";
         this.addExtra = false;
@@ -19,6 +19,7 @@ export class SignRequestParams extends EventFactory {
         this.extraDate = null;
         this.isExtraText = null;
         this.signImageNumber = 0;
+        this.pdSignatureFieldName = null;
         Object.assign(this, signRequestParamsModel);
         this.isExtraText = !(this.extraText !== "");
         this.originalWidth = this.signWidth;
@@ -45,6 +46,7 @@ export class SignRequestParams extends EventFactory {
         this.firstLaunch = true;
         this.firstCrossAlert = true;
         this.cross = null;
+        this.signSpace = null;
         this.submitAddSpotBtn = null;
         this.border = null;
         this.tools = null;
@@ -55,7 +57,6 @@ export class SignRequestParams extends EventFactory {
         this.spotStepNumber = null;
         this.textPart = null;
         this.signColorPicker = null;
-        this.pdSignatureFieldName = null;
         this.restoreExtraOnTop = false;
         this.allPages = false;
         this.extraWidth = 0;
@@ -122,7 +123,7 @@ export class SignRequestParams extends EventFactory {
                 e.stopPropagation();
             });
         }
-        $("#signDrop_" + this.id).on("mousedown", e => this.deleteSign()    );
+        $("#signDrop_" + this.id).on("mousedown", e => this.deleteSign());
         $("#signNextImage_" + this.id).on("mousedown", e => this.changeSignImage(parseInt(this.signImageNumber) + 1));
         $("#signPrevImage_" + this.id).on("mousedown", e => this.prevSignImage());
         $("#displayMoreTools_" + this.id).on("mousedown", e => this.displayMoreTools());
@@ -147,19 +148,28 @@ export class SignRequestParams extends EventFactory {
         console.log("init spot");
         this.createCross();
         this.madeCrossDraggable();
+        this.madeCrossResizable();
         this.createBorder();
         this.createTools();
         this.updateSize();
         this.toggleMinimalTools();
         this.cross.css('background-color', 'rgba(189, 255, 189, 0.9)');
+        this.cross.css('overflow', 'hidden');
         this.cross.append("<p class='text-black' style='font-weight: bold;'>Positionner le champ de signature et cliquer sur enregistrer</p>");
-        this.cross.css("width", Math.round(150 * this.currentScale) + "px");
-        this.cross.css("height", Math.round(75 * this.currentScale) + "px");
-        this.cross.css("font-size", Math.round(12 * this.currentScale)  + "px");
-        this.cross.append("<button id='submit-add-spot' type='button' class='btn btn-sm btn-success position-absolute bottom-0 end-0' style='z-index: 4;'><i class='fas fa-save'></i></button>");
+        this.cross.css("width", Math.round(150 / .75 * this.currentScale) + "px");
+        this.cross.css("height", Math.round(75 / .75 * this.currentScale) + "px");
+        this.cross.css("font-size", Math.round(10 * this.currentScale)  + "px");
+        this.cross.append("<button id='delete-add-spot' type='button' class='btn btn-sm btn-danger position-absolute' style='z-index: 4; bottom:10px; left: 10px;'><i class='fa-solid fa-xmark'></i></button>");
+        this.cross.append("<button id='submit-add-spot' type='button' class='btn btn-sm btn-success position-absolute' style='z-index: 4; bottom:10px; right: 10px;'><i class='fa-solid fa-save'></i></button>");
         this.submitAddSpotBtn = $("#submit-add-spot");
         this.submitAddSpotBtn.on("click", function () {
             $("#spot-modal").modal("show");
+        });
+        let self = this;
+        $("#delete-add-spot").on("click", function (){
+            const url = new URL(window.location.href);
+            url.searchParams.set("annotation", "");
+            window.location.href = url.toString();
         });
         this.saveSpotButton = $("#save-spot-button")
         this.saveSpotButton.unbind();
@@ -167,6 +177,7 @@ export class SignRequestParams extends EventFactory {
     }
 
     saveSpot() {
+        $(window).unbind("beforeunload");
         let self = this;
         this.spotStepNumber = $("#spotStepNumber").val();
         if(this.spotStepNumber == null || this.spotStepNumber === "") {
@@ -175,23 +186,23 @@ export class SignRequestParams extends EventFactory {
             let commentUrlParams = "comment=" + encodeURIComponent($("#spotComment").val()) +
                 "&commentPosX=" + Math.round(this.xPos) +
                 "&commentPosY=" + Math.round(this.yPos) +
+                "&commentWidth=" + Math.round(this.signWidth * .75) +
+                "&commentHeight=" + Math.round(this.signHeight * .75) +
                 "&commentPageNumber=" + this.signPageNumber +
                 "&spotStepNumber=" + this.spotStepNumber +
                 "&" + this.csrf.parameterName + "=" + this.csrf.token;
             this.signRequestId = $("#save-spot-button").attr("data-es-signrequest-id");
             let url = "/user/signrequests/comment/" + this.signRequestId + "?" + commentUrlParams;
             if (this.signType === "form") {
-                url = "/admin/forms/add-spot/" + this.signRequestId + "?" + commentUrlParams;
+                url = "/" + this.userName + "/forms/add-spot/" + this.signRequestId + "?" + commentUrlParams;
             }
             $.ajax({
                 method: 'POST',
                 url: url,
                 success: function (result) {
-                    $("#spot-modal").modal("hide");
-                    self.id = result;
-                    $(window).unbind("beforeunload");
-                    self.disableSpot();
-                }
+                    const url = new URL(window.location.href);
+                    url.searchParams.set("annotation", "");
+                    window.location.href = url.toString();                }
             });
         }
     }
@@ -220,8 +231,8 @@ export class SignRequestParams extends EventFactory {
             bootbox.confirm("Supprimer cet emplacement de signature ?", function (result) {
                 if (result) {
                     let url = "/ws-secure/global/delete-comment/" + self.signRequestId + "/" + self.id + "?" + self.csrf.parameterName + "=" + self.csrf.token;
-                    if (self.authUserName === "forms" && self.userName === "admin") {
-                        url = "/admin/forms/delete-spot/" + self.signRequestId + "/" + self.id + "?" + self.csrf.parameterName + "=" + self.csrf.token;
+                    if (self.authUserName === "forms" && (self.userName === "admin" || self.userName === "manage")) {
+                        url = "/" + self.userName + "/forms/delete-spot/" + self.signRequestId + "/" + self.id + "?" + self.csrf.parameterName + "=" + self.csrf.token;
                     }
                     $.ajax({
                         method: 'DELETE',
@@ -279,27 +290,7 @@ export class SignRequestParams extends EventFactory {
         this.createCross();
         let self = this;
         this.madeCrossDraggable();
-        this.cross.resizable({
-            aspectRatio: true,
-            resize: function(event, ui) {
-                if(self.textareaPart != null) {
-                    self.signScale = self.getNewScale(ui);
-                    self.resizeText();
-                    self.signWidth = parseInt(self.textareaPart.css("width")) / self.currentScale;
-                    self.extraWidth = self.extraWidth / self.signScale;
-                    self.canvas.css("width", (self.signWidth * self.currentScale * self.signScale));
-                    self.canvas.css("height", (self.signHeight * self.currentScale * self.signScale));
-                } else {
-                    self.resize(ui);
-                }
-            },
-            stop: function(event, ui) {
-                self.signScale = self.getNewScale(ui);
-                if(self.isSign) {
-                    localStorage.setItem("zoom", self.signScale);
-                }
-            }
-        });
+        this.madeCrossResizable();
         this.createBorder();
         this.createTools();
         this.extraWidth = 0;
@@ -433,6 +424,7 @@ export class SignRequestParams extends EventFactory {
         let maxHeight = ((this.originalHeight + this.extraHeight / this.signScale) * 2 * this.currentScale);
         let minWidth = ((this.originalWidth + this.extraWidth / this.signScale) * .5 * this.currentScale);
         let minHeight = ((this.originalHeight + this.extraHeight / this.signScale) * .5 * this.currentScale);
+        let refresh = false;
         if (ui.size.width >= maxWidth
             ||
             ui.size.height >= maxHeight
@@ -444,7 +436,10 @@ export class SignRequestParams extends EventFactory {
             ui.size.height <= minHeight) {
             ui.size.width = minWidth;
             ui.size.height = minHeight;
+        } else {
+            refresh = true;
         }
+        if (refresh) {
         let newScale = this.getNewScale(ui);
         this.signWidth = this.signWidth / this.signScale * newScale;
         this.signHeight = this.signHeight / this.signScale * newScale;
@@ -466,6 +461,7 @@ export class SignRequestParams extends EventFactory {
         }
         this.canvas.css("width", (this.signWidth - this.extraWidth - this.padMargin) * this.currentScale);
         this.canvas.css("height", (this.signHeight - this.extraHeight - this.padMargin) * this.currentScale);
+    }
     }
 
     createCross() {
@@ -493,7 +489,7 @@ export class SignRequestParams extends EventFactory {
         }
 
         this.cross.css("position", "absolute");
-        this.cross.css("z-index", "100");
+        this.cross.css("z-index", "1028");
         this.cross.attr("data-id", this.id);
 
     }
@@ -600,6 +596,9 @@ export class SignRequestParams extends EventFactory {
         let self = this;
         this.cross.draggable({
             containment: "#pdf",
+            snap: ".pdf-page",
+            snapMode: "inner",
+            snapTolerance: 20,
             refreshPositions:true,
             scroll: true,
             drag: function(event, ui) {
@@ -609,20 +608,16 @@ export class SignRequestParams extends EventFactory {
                 self.tools.addClass("d-none");
             },
             stop: function(event, ui) {
+                const dragRect = this.getBoundingClientRect();
+                self.checkInside(dragRect, self);
+
                 self.tools.removeClass("d-none");
-                if($(event.originalEvent.target).attr("id") != null && $("#border_" + $(event.originalEvent.target).attr("id").split("_")[1]).hasClass("cross-error") && self.firstCrossAlert) {
+                if($(event.originalEvent.target).attr("id") != null && $("#border_" + $(event.originalEvent.target).attr("id").split("_")[1]).hasClass("cross-warning") && self.firstCrossAlert) {
                     self.firstCrossAlert = false;
                     bootbox.alert("Attention votre signature superpose un autre élément du document cela pourrait nuire à sa lecture. Vous pourrez tout de même la valider même si elle est de couleur orange", null);
                 }
                 if(!self.dropped) {
-                    self.signPageNumber = self.cross.attr("page");
-                    self.xPos = Math.round(ui.position.left / self.currentScale);
-                    self.yPos = Math.round((ui.position.top - (($("#page_" + self.signPageNumber).offset().top) - $("#page_1").offset().top)) / self.currentScale);
-                    if (self.yPos < 0) self.yPos = 0;
-                    console.log("x : " + self.xPos + ", y : " + self.yPos);
-                    if(self.textareaPart != null) {
-                        self.resizeText();
-                    }
+                    self.afterDropRefresh(ui);
                 } else {
                     self.dropped = false;
                 }
@@ -635,6 +630,72 @@ export class SignRequestParams extends EventFactory {
         });
     }
 
+    checkInside(dragRect, self) {
+        let inside = false;
+        $(".pdf-page").each(function () {
+            const pageRect = this.getBoundingClientRect();
+            if (
+                dragRect.left + 10 >= pageRect.left &&
+                dragRect.top + 10 >= pageRect.top &&
+                dragRect.right - 10 <= pageRect.right &&
+                dragRect.bottom - 10 <= pageRect.bottom
+            ) {
+                inside = true;
+                return false;
+            }
+        });
+
+        if (!inside) {
+            console.log("La signature n'est pas entièrement dans une page !");
+            $("#signLaunchButton").attr("disabled", "disabled");
+            self.border.addClass("cross-danger");
+        } else {
+            $("#signLaunchButton").removeAttr("disabled");
+            self.border.removeClass("cross-danger");
+        }
+    }
+
+    madeCrossResizable() {
+        let self = this;
+        this.cross.resizable({
+            aspectRatio: true,
+            resize: function(event, ui) {
+                if(self.textareaPart != null) {
+                    self.signScale = self.getNewScale(ui);
+                    self.resizeText();
+                    self.signWidth = parseInt(self.textareaPart.css("width")) / self.currentScale;
+                    self.extraWidth = self.extraWidth / self.signScale;
+                    self.canvas.css("width", (self.signWidth * self.currentScale * self.signScale));
+                    self.canvas.css("height", (self.signHeight * self.currentScale * self.signScale));
+                } else {
+                    self.resize(ui);
+                }
+            },
+            stop: function(event, ui) {
+                console.log(ui);
+                self.signScale = self.getNewScale(ui);
+                if(self.isSign) {
+                    localStorage.setItem("zoom", self.signScale);
+                }
+                const dragRect = this.getBoundingClientRect();
+                self.checkInside(dragRect, self);
+
+            }
+        });
+    }
+
+    afterDropRefresh(ui) {
+        let self = this;
+        self.signPageNumber = self.cross.attr("page");
+        self.xPos = Math.round(ui.position.left / self.currentScale);
+        self.yPos = Math.round((ui.position.top - (($("#page_" + self.signPageNumber).offset().top) - $("#page_1").offset().top)) / self.currentScale);
+        if (self.yPos < 0) self.yPos = 0;
+        console.log("x : " + self.xPos + ", y : " + self.yPos);
+        if(self.textareaPart != null) {
+            self.resizeText();
+        }
+    }
+
     applyCurrentSignRequestParams(offset) {
         this.cross.css('top', Math.round(this.yPos * this.currentScale + offset) + 'px');
         this.cross.css('left', Math.round(this.xPos * this.currentScale) + 'px');
@@ -643,20 +704,19 @@ export class SignRequestParams extends EventFactory {
     deleteSign() {
         let self = this;
         this.cross.attr("remove", "true");
-        this.cross.draggable("enable");
-        this.cross.on("drag", function(e) {
-            self.cross.remove();
-            self.fireEvent("delete", ["ok"]);
-            $("#signLaunchButton").removeClass("pulse-success");
-            $("#addSpotButton").attr("disabled", false);
-            $("#addCommentButton").attr("disabled", false);
-            $('#insert-btn').removeAttr('disabled');
-        });
-        this.cross.simulate("drag", {
-            dx: 9999999999,
-            dy: 9999999999
-        });
-
+        self.cross.remove();
+        self.fireEvent("delete", ["ok"]);
+        $("#addSpotButton").attr("disabled", false);
+        $("#addCommentButton").attr("disabled", false);
+        $('#insert-btn').removeAttr('disabled');
+        if(self.signSpace != null) {
+            self.signSpace.addClass("sign-field");
+            self.signSpace.removeClass("sign-field-dropped");
+            self.ready = false;
+            self.signSpace.text("Vous devez placer une signature ici");
+            self.signSpace.css("pointer-events", "auto");
+            self.signSpace = null;
+        }
     }
 
     getTools() {
@@ -735,6 +795,13 @@ export class SignRequestParams extends EventFactory {
         }
         $(document).unbind('keydown');
         this.canvasBtn.removeClass("d-none");
+        const ui = {
+            position: {
+                left: parseInt(this.cross.css('left'), 10),
+                top: parseInt(this.cross.css('top'), 10)
+            }
+        };
+        this.afterDropRefresh(ui);
     }
 
     wantUnlock() {
@@ -802,7 +869,7 @@ export class SignRequestParams extends EventFactory {
     show() {
         this.cross.css('opacity', '1');
         this.cross.draggable("enable");
-        this.cross.css("z-index", 5);
+        this.cross.css("z-index", 1028);
     }
 
     hide() {
@@ -964,9 +1031,8 @@ export class SignRequestParams extends EventFactory {
                 $("#signExtraOnTop_" + this.id).addClass("btn-outline-dark");
             }
             if(this.divExtra == null) {
-                this.typeSign = "Signature calligraphique";
+                this.typeSign = "Signature";
                 if (this.isVisa) this.typeSign = "Visa";
-                if (this.isElec) this.typeSign = "Signature électronique";
                 let divExtraHtml = "<div id='divExtra_" + this.id + "' class='div-extra div-extra-top' style='position: absolute;z-index: 5;'></div>";
                 this.cross.prepend(divExtraHtml);
                 this.divExtra = $("#divExtra_" + this.id);
@@ -1197,7 +1263,7 @@ export class SignRequestParams extends EventFactory {
     }
 
     addTextArea() {
-        let divExtraHtml = "<textarea id='textExtra_" + this.id + "' tabindex='0' class='sign-textarea align-top' style='display: none;' rows='1' cols='30'></textarea>";
+        let divExtraHtml = "<textarea id='textExtra_" + this.id + "' tabindex='0' class='sign-textarea align-top' style='display: none;line-height: 1.3 !important;' rows='1' cols='30'></textarea>";
         this.divExtra.append(divExtraHtml);
         this.textareaExtra = $("#textExtra_" + this.id);
         this.textareaExtra.css('width', '100%');
@@ -1225,17 +1291,16 @@ export class SignRequestParams extends EventFactory {
             if(lines.length > maxLines) {
                 lines.pop();
             }
-
             for(let i = 0; i < lines.length; i++) {
                 let c = document.createElement("canvas");
                 let ctx = c.getContext("2d");
-                ctx.font = fontSize + "px Gravity";
+                ctx.font = fontSize + "px";
                 let txt = lines[i];
-                console.log(ctx.measureText(txt).width + " " + this.textareaExtra.css("width"));
-                if(ctx.measureText(txt).width < (parseInt(this.textareaExtra.css("width")) - (ctx.measureText(txt).width / txt.length) * 2)) {
+                if(ctx.measureText(txt).width < (parseInt(this.textareaExtra.css("width")))) {
                     text += txt;
                     this.stringLength = txt.length;
                 } else {
+                    console.log("text length : " + ctx.measureText(txt).width + " " + this.textareaExtra.css("width"));
                     text += txt.substring(0, this.stringLength);
                 }
                 if(i < lines.length - 1) {
@@ -1314,24 +1379,52 @@ export class SignRequestParams extends EventFactory {
     }
 
     resizeText() {
+        const minCols = 10;
+        const extraPx = 6; // marge pour éviter que le dernier caractère soit collé
         let fontSize = this.fontSize * this.currentScale * this.signScale;
-        this.textareaPart.css("font-size", Math.round(fontSize));
+        const roundedFontSize = Math.round(fontSize);
+        this.textareaPart.css("font-size", roundedFontSize + "px");
+
+        const text = this.textareaPart.val() || "";
+        this.textPart = text;
+        const lines = text.split(/\r\n|\r|\n/);
+
+        if (lines[0] && lines[0].length > 0) {
+            this.textareaPart.css("width", "");
+        }
+
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        const fontFamily = this.textareaPart.css("font-family") || "sans-serif";
+        ctx.font = `${roundedFontSize}px ${fontFamily}`;
+
+        const sample = "W";
+        const avgCharWidth = ctx.measureText(sample).width / sample.length;
+
+        const maxLen = lines.reduce((m, l) => Math.max(m, l.length), 0);
+
+        let finalPxWidth;
+        if (maxLen <= minCols) {
+            finalPxWidth = Math.ceil(avgCharWidth * minCols) + extraPx;
+        } else {
+            let maxWidth = 0;
+            for (const l of lines) {
+                const w = ctx.measureText(l).width;
+                if (w > maxWidth) maxWidth = w;
+            }
+            finalPxWidth = Math.ceil(maxWidth) + extraPx;
+        }
+
+        this.textareaPart.css("width", finalPxWidth + "px");
+        this.textareaPart.attr("rows", Math.max(lines.length, 1));
+
+        // mettre à jour cols pour compatibilité si tu t'en sers ailleurs
+        this.textareaPart.attr("cols", Math.max(minCols, Math.ceil(finalPxWidth / avgCharWidth)));
+
+        // recalculer les tailles sign en tenant compte du scale
         this.signWidth = Math.round(parseInt(this.textareaPart.css("width")) / this.currentScale);
         this.signHeight = Math.round(parseInt(this.textareaPart.css("height")) / this.currentScale);
-        let text = this.textareaPart.val();
-        this.textPart = text;
-        let lines = text.split(/\r|\r\n|\n/);
-        if(lines[0].length > 0) {
-            this.textareaPart.css('width', '');
-        }
-        let width = 28;
-        for(let i = 0; i < lines.length; i++) {
-            if(lines[i].length >= width) {
-                width = lines[i].length;
-            }
-        }
-        this.textareaPart.attr("cols", width);
-        this.textareaPart.attr("rows", lines.length);
+
         this.cross.css("width", this.textareaPart.css("width"));
         this.cross.css("height", this.textareaPart.css("height"));
     }
@@ -1444,4 +1537,5 @@ export class SignRequestParams extends EventFactory {
         }
         $("#add-sign-image").modal("show");
     }
+
 }

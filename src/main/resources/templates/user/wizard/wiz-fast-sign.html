@@ -3,17 +3,17 @@
 <!--/*@thymesVar id="workflow" type="org.esupportail.esupsignature.entity.Workflow"*/-->
 <div class="modal-header">
     <h3 class="modal-title" id="sendSignRequestLabel">Créer une demande de signature</h3>
-    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    <button type="button" class="btn-close" title="Fermer" data-bs-dismiss="modal" aria-label="Close"></button>
 </div>
 <div class="modal-body">
     <form id="update-fast-sign">
         <div class="form-group mb-3">
             <label class="form-label" for="title" >Titre (facultatif)</label>
-            <input type="text" id="title" class="form-control" name="title" placeholder="Vous pouvez saisir un titre pour retrouver votre demande">
+            <input type="text" id="title" class="form-control" name="title" placeholder="Vous pouvez saisir un titre pour retrouver votre demande" autofocus>
         </div>
         <div class="form-group mb-3">
             <label class="form-label" for="multipartFiles">Choix des fichiers à signer *</label>
-            <input id="multipartFiles" name="multipartFiles" type="file" multiple="multiple" th:accept="${globalProperties.pdfOnly} ? 'application/pdf' : ''" required>
+            <input tabindex="500" id="multipartFiles" name="multipartFiles" type="file" multiple="multiple" th:accept="${globalProperties.pdfOnly} ? 'application/pdf' : ''" required>
         </div>
         <div id="forceAllSign" class="form-check form-switch form-switch-md d-none">
             <input id="force-all-sign" class="form-check-input" type="checkbox" name="forceAllSign">
@@ -25,8 +25,8 @@
                 <input type="checkbox" class="form-check-input" name="userSignFirst" id="userSignFirst">
             </div>
         </div>
-        <div class="w-100 d-inline-flex gap-2">
-            <div class="w-50" style="min-width: 50%;">
+        <div class="w-100">
+            <div>
                 <div class="form-group mb-3">
                     <label class="form-label" for="recipientsEmails-1">Choisir les participants *</label>
                     <select class="select-users" data-es-check-cert="true" name="recipientsEmails" id="recipientsEmails-1" multiple="multiple" required="required">
@@ -39,15 +39,57 @@
                     <input type="checkbox" class="form-check-input" name="allSignToComplete" id="all-sign-to-complete-1"/>
                 </div>
             </div>
-            <div class="w-50 align-self-start">
-                <div class="form-group">
-                    <label class="form-label" for="signType-1">Choisir un type de signature *</label>
-                    <select class="form-select" name="signType" id="signType-1">
-                        <th:block th:each="signType : ${signTypes}">
-                            <option th:value="${signType}"
-                                    th:text="#{'signbook.signtype.' + ${signType}}" th:selected="${signType.name() == 'pdfImageStamp'}"></option>
-                        </th:block>
-                    </select>
+            <div class="align-self-start">
+                <button data-bs-target="#collapseHelpSignType" data-bs-toggle="collapse" title="Aide sur les types de signature"
+                        type="button" class="btn btn-sm btn-transparent">
+                    <span class="fa-solid fa-info-circle text-info"></span>
+                </button>
+                <div class="collapse" id="collapseHelpSignType">
+                    <div class="alert alert-info">
+                        <small>
+                            <ul>
+                                <li><b>Signature :</b> La signature modifie le document en ajoutant une image et/ou en verrouillant le document, en fonction du niveau choisi.</li>
+                                <li><b>Visa :</b> Le visa est une version simplifiée de la signature simple, l’utilisateur ne peut pas modifier le visuel de son visa. Le visa ne permet pas la signature avancée, mais il est possible de vérrouiller le document via le certificat cachet si votre plateforme en possède un.</li>
+                                <li><b>Vérification :</b> La vérification permet juste de valider un document sans l’altérer</li>
+                            </ul>
+                            <ul>
+                                <li>
+                                    <b>Signature simple :</b> adaptée aux documents internes ou aux échanges ne présentant pas de risque particulier, lorsqu’il n’existe pas d’obligation légale imposant un niveau supérieur. (apposition d’une image + traces)
+                                </li>
+                                <li>
+                                    <b>Signature avancée :</b> recommandée pour les documents nécessitant de pouvoir identifier le signataire et disposer d’un élément de preuve supplémentaire, par exemple pour des contrats ou des engagements comportant un risque juridique modéré. (nécessite un certificat électronique)
+                                </li>
+                                <li>
+                                    <b>Signature qualifiée :</b> à privilégier pour les actes à portée européenne ou pour les situations à fort enjeu (importance juridique ou financière), car elle bénéficie d’une reconnaissance mutuelle dans l’Union européenne et d’une présomption de fiabilité équivalente à une signature manuscrite. (nécessite un certificat eIDas)
+                                </li>
+                            </ul>
+                        </small>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <div class="form-group w-50">
+                        <label class="form-label" for="signType-1">Choisir un type de signature *</label>
+                        <select class="form-select" name="signType" id="signType-1" onchange="toggleSignLevel()">
+                            <th:block th:each="signType : ${signTypes}">
+                                <option th:value="${signType}" th:if="${signType != T(org.esupportail.esupsignature.entity.enums.SignType).hiddenVisa || globalProperties.hideHiddenVisa == false}"
+                                        th:text="#{'signbook.signtype.' + ${signType}}"></option>
+                            </th:block>
+                        </select>
+                    </div>
+                    <div class="form-group w-50" id="minSignLevel" title="Avancée et qualifiée nécessitent un certificat">
+                        <label class="form-label" for="minSignLevel-1">Niveau minimum</label>
+                        <select class="form-select" name="minSignLevel" id="minSignLevel-1">
+                            <th:block th:each="signLevel : ${signLevels}">
+                                <option th:value="${signLevel}" th:text="#{'signlevel.' + ${signLevel}}"></option>
+                            </th:block>
+                        </select>
+                    </div>
+                    <div th:if="${#authorization.expression('hasRole(''ROLE_SEAL'')')}" class="form-check form-switch form-switch-md mt-5" id="seal-options" style="display: none;">
+                        <label class="form-check-label">
+                            Utiliser le cachet de l’établissement pour verrouiller le visa
+                        </label>
+                        <input type="checkbox" class="form-check-input" id="sealVisa-1"/>
+                    </div>
                 </div>
                 <div class="form-check form-switch form-switch-md " id="sign-options">
                     <label class="form-check-label">
@@ -57,7 +99,7 @@
                 </div>
                 <div class="form-check form-switch form-switch-md mb-3">
                     <label class="form-check-label">
-                        Si signature unique, autoriser les annotation (coches, croix...)
+                        Si signature unique, autoriser les annotations (coches, croix...)
                     </label>
                     <input type="checkbox" class="form-check-input" checked id="singleSignWithAnnotation" disabled/>
                 </div>

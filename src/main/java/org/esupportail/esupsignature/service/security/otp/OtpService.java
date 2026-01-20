@@ -62,12 +62,12 @@ public class OtpService {
     }
 
     @Transactional
-    public boolean generateOtpForSignRequest(Long id, Long extUserId, String phone, boolean signature) throws EsupSignatureMailException {
+    public Otp generateOtpForSignRequest(Long id, Long extUserId, String phone, boolean signature) throws EsupSignatureMailException {
         User extUser = userService.getById(extUserId);
         if(extUser.getUserType().equals(UserType.external) && (!globalProperties.getSmsRequired() || smsService != null)) {
             SignBook signBook = signBookRepository.findById(id).get();
             if(!signBook.getStatus().equals(SignRequestStatus.pending) && !signBook.getStatus().equals(SignRequestStatus.completed)) {
-                return false;
+                return null;
             }
             Otp otp = new Otp();
             otp.setCreateDate(new Date());
@@ -92,9 +92,9 @@ public class OtpService {
             otpRepository.save(otp);
             mailService.sendOtp(otp, signBook, signature);
             logger.info("new url for otp : " + urlId);
-            return true;
+            return otp;
         } else {
-            return false;
+            return null;
         }
     }
 
@@ -204,12 +204,19 @@ public class OtpService {
         return new String(Hex.encode(hash));
     }
 
+    /**
+     * Nettoie les OTP (One-Time Passwords) terminés, expirés ou associés à des demandes supprimées, refusées ou exportées.
+     *
+     * Cette méthode effectue les opérations suivantes :
+     * - Récupère tous les OTP associés à des demandes avec un état "SignRequestStatus.deleted", "SignRequestStatus.refused" ou "SignRequestStatus.exported".
+     * - Ajoute les OTP associés à des demandes terminées si la date de fin de leur demande est antérieure à 30 jours par rapport à la date actuelle.
+     * - Supprime ces OTP des données persistantes en appelant `clearOTP` pour nettoyer leurs identifiants (URL) et les retirer via le référentiel `otpRepository`.
+     */
     @Transactional
     public void cleanEndedOtp(){
         List<Otp> toCleanOtps = otpRepository.findBySignBookStatus(SignRequestStatus.deleted);
         toCleanOtps.addAll(otpRepository.findBySignBookStatus(SignRequestStatus.refused));
         toCleanOtps.addAll(otpRepository.findBySignBookStatus(SignRequestStatus.exported));
-        toCleanOtps.addAll(otpRepository.findBySignBookStatus(SignRequestStatus.archived));
         List<Otp> completedOtps = otpRepository.findBySignBookStatus(SignRequestStatus.completed);
         for(Otp completedOtp : completedOtps) {
             if(completedOtp.getSignBook().getEndDate() != null && completedOtp.getSignBook().getEndDate().before(new Date(System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000))) {
@@ -217,6 +224,16 @@ public class OtpService {
             }
         }
         logger.info(toCleanOtps.size() + " otps to clean");
+        for(Otp otp : toCleanOtps) {
+            clearOTP(otp.getUrlId());
+            otpRepository.delete(otp);
+        }
+    }
+
+    @Transactional
+    public void deleteOtp(Long signbookId, User user) {
+        SignBook signBook = signBookRepository.findById(signbookId).get();
+        List<Otp> toCleanOtps = otpRepository.findByUserAndSignBook(user, signBook);
         for(Otp otp : toCleanOtps) {
             clearOTP(otp.getUrlId());
             otpRepository.delete(otp);

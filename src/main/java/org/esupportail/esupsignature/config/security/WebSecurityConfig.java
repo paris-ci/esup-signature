@@ -1,64 +1,68 @@
 package org.esupportail.esupsignature.config.security;
 
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import org.apache.commons.lang3.BooleanUtils;
 import org.esupportail.esupsignature.config.GlobalProperties;
+import org.esupportail.esupsignature.config.security.cas.CasJwtDecoder;
 import org.esupportail.esupsignature.config.security.cas.CasProperties;
+import org.esupportail.esupsignature.config.security.jwt.CustomJwtAuthenticationConverter;
+import org.esupportail.esupsignature.config.security.jwt.MdcUsernameFilter;
 import org.esupportail.esupsignature.config.security.otp.OtpAuthenticationProvider;
 import org.esupportail.esupsignature.config.security.shib.DevShibProperties;
 import org.esupportail.esupsignature.config.security.shib.ShibProperties;
+import org.esupportail.esupsignature.config.sms.SmsProperties;
+import org.esupportail.esupsignature.entity.enums.ExternalAuth;
 import org.esupportail.esupsignature.service.security.IndexEntryPoint;
 import org.esupportail.esupsignature.service.security.LogoutHandlerImpl;
+import org.esupportail.esupsignature.service.security.OidcOtpSecurityService;
 import org.esupportail.esupsignature.service.security.SecurityService;
-import org.esupportail.esupsignature.service.security.SpelGroupService;
 import org.esupportail.esupsignature.service.security.cas.CasSecurityServiceImpl;
 import org.esupportail.esupsignature.service.security.oauth.CustomAuthorizationRequestResolver;
-import org.esupportail.esupsignature.service.security.oauth.OAuthSecurityServiceImpl;
+import org.esupportail.esupsignature.service.security.oauth.OAuth2FailureHandler;
+import org.esupportail.esupsignature.service.security.oauth.OAuthAuthenticationSuccessHandler;
 import org.esupportail.esupsignature.service.security.oauth.ValidatingOAuth2UserService;
+import org.esupportail.esupsignature.service.security.oauth.franceconnect.FranceConnectSecurityServiceImpl;
+import org.esupportail.esupsignature.service.security.oauth.proconnect.ProConnectSecurityServiceImpl;
 import org.esupportail.esupsignature.service.security.shib.DevShibRequestFilter;
 import org.esupportail.esupsignature.service.security.shib.ShibSecurityServiceImpl;
 import org.esupportail.esupsignature.service.security.su.SuAuthenticationSuccessHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.autoconfigure.security.oauth2.client.ClientsConfiguredCondition;
+import org.springframework.boot.autoconfigure.security.oauth2.client.ConditionalOnOAuth2ClientRegistrationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
-import org.springframework.ldap.core.support.LdapContextSource;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
 import org.springframework.security.core.session.SessionRegistryImpl;
-import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
-import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.JwtDecoderFactory;
-import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandlerImpl;
 import org.springframework.security.web.access.expression.WebExpressionAuthorizationManager;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.ExceptionMappingAuthenticationFailureHandler;
 import org.springframework.security.web.authentication.session.RegisterSessionAuthenticationStrategy;
 import org.springframework.security.web.authentication.switchuser.SwitchUserFilter;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.session.HttpSessionEventPublisher;
 import org.springframework.util.StringUtils;
 
-import javax.crypto.spec.SecretKeySpec;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-
-import static org.springframework.security.web.util.matcher.AntPathRequestMatcher.antMatcher;
 
 @Configuration
 @EnableWebSecurity(debug = false)
@@ -72,77 +76,65 @@ public class WebSecurityConfig {
 
 	private final String apiKey = "SomeKey1234567890";
 
-	private LdapContextSource ldapContextSource;
-
-	@Autowired(required = false)
-	public void setLdapContextSource(LdapContextSource ldapContextSource) {
-		this.ldapContextSource = ldapContextSource;
-	}
-
 	private final GlobalProperties globalProperties;
-
+	private final OAuthAuthenticationSuccessHandler oAuthAuthenticationSuccessHandler;
 	private final WebSecurityProperties webSecurityProperties;
-
 	private final ClientRegistrationRepository clientRegistrationRepository;
-
-	private final List<SecurityService> securityServices = new ArrayList<>();
-
+	private final List<SecurityService> securityServices;
+	private final RegisterSessionAuthenticationStrategy sessionAuthenticationStrategy;
+	private final SessionRegistryImpl sessionRegistry;
+	private final LogoutHandlerImpl logoutHandler;
+	private final CasJwtDecoder casJwtDecoder;
 	private DevShibRequestFilter devShibRequestFilter;
 
-	public WebSecurityConfig(GlobalProperties globalProperties, WebSecurityProperties webSecurityProperties, @Autowired(required = false) ClientRegistrationRepository clientRegistrationRepository) {
+	public WebSecurityConfig(GlobalProperties globalProperties, OAuthAuthenticationSuccessHandler oAuthAuthenticationSuccessHandler, WebSecurityProperties webSecurityProperties, @Autowired(required = false) ClientRegistrationRepository clientRegistrationRepository, List<SecurityService> securityServices, RegisterSessionAuthenticationStrategy sessionAuthenticationStrategy, SessionRegistryImpl sessionRegistry, LogoutHandlerImpl logoutHandler, @Autowired(required = false) CasJwtDecoder casJwtDecoder) {
         this.globalProperties = globalProperties;
+        this.oAuthAuthenticationSuccessHandler = oAuthAuthenticationSuccessHandler;
         this.webSecurityProperties = webSecurityProperties;
         this.clientRegistrationRepository = clientRegistrationRepository;
-	}
+        this.securityServices = securityServices;
+        this.sessionAuthenticationStrategy = sessionAuthenticationStrategy;
+        this.sessionRegistry = sessionRegistry;
+        this.logoutHandler = logoutHandler;
+        this.casJwtDecoder = casJwtDecoder;
+    }
 
 	@Bean
-	@Order(1)
-	@ConditionalOnProperty({"spring.ldap.base", "security.cas.service"})
-	public CasSecurityServiceImpl casSecurityServiceImpl() {
-		if(ldapContextSource!= null && ldapContextSource.getUserDn() != null) {
-			CasSecurityServiceImpl casSecurityService = new CasSecurityServiceImpl();
-			securityServices.add(casSecurityService);
-			return casSecurityService;
+	@ConditionalOnProperty(name = "spring.security.oauth2.client.provider.cas.issuer-uri")
+	public SecurityFilterChain wsJwtSecurityFilter(HttpSecurity http) throws Exception {
+		http.securityMatcher("/ws-jwt/**");
+		if (StringUtils.hasText(issuerUri)) {
+			http.oauth2ResourceServer(oauth2 -> oauth2.bearerTokenResolver(bearerTokenResolver()).jwt(jwt -> jwt.decoder(casJwtDecoder)
+					.jwtAuthenticationConverter(new CustomJwtAuthenticationConverter())));
+			http.authorizeHttpRequests(auth -> auth.anyRequest().authenticated());
 		} else {
-			logger.error("cas config found without needed ldap config, cas security will be disabled");
-			return null;
+			http.authorizeHttpRequests(auth -> auth.anyRequest().denyAll());
 		}
+		http.cors(AbstractHttpConfigurer::disable);
+		http.addFilterAfter(new MdcUsernameFilter(), AuthorizationFilter.class);
+		return http.build();
 	}
 
-	@Bean
-	@Order(2)
-	@ConditionalOnProperty(prefix = "security.shib", name = "principal-request-header")
-	public ShibSecurityServiceImpl shibSecurityServiceImpl() {
-		ShibSecurityServiceImpl shibSecurityService = new ShibSecurityServiceImpl();
-		securityServices.add(shibSecurityService);
-		return shibSecurityService;
-	}
+	@Value("${spring.security.oauth2.client.provider.cas.issuer-uri:}")
+	private String issuerUri;
 
 	@Bean
-	@Order(3)
-	@Conditional(ClientsConfiguredCondition.class)
-	public OAuthSecurityServiceImpl oAuthSecurityService() {
-		OAuthSecurityServiceImpl oAuthSecurityService = new OAuthSecurityServiceImpl();
-		securityServices.add(oAuthSecurityService);
-		return oAuthSecurityService;
-	}
+	public BearerTokenResolver bearerTokenResolver() {
+		return new BearerTokenResolver() {
+			private final DefaultBearerTokenResolver defaultResolver = new DefaultBearerTokenResolver();
 
-	@Bean
-	@Conditional(ClientsConfiguredCondition.class)
-	JwtDecoder jwtDecoder() {
-		ClientRegistration registration = clientRegistrationRepository.findByRegistrationId("franceconnect");
-		SecretKeySpec key = new SecretKeySpec(registration.getClientSecret().getBytes(StandardCharsets.UTF_8), "HS256");
-		return NimbusJwtDecoder.withSecretKey(key).macAlgorithm(MacAlgorithm.HS256).build();
-	}
-
-	@Bean
-	@Conditional(ClientsConfiguredCondition.class)
-	public JwtDecoderFactory<ClientRegistration> jwtDecoderFactory() {
-		final JwtDecoder decoder = jwtDecoder();
-		return new JwtDecoderFactory<ClientRegistration>() {
 			@Override
-			public JwtDecoder createDecoder(ClientRegistration context) {
-				return decoder;
+			public String resolve(HttpServletRequest request) {
+				String token = defaultResolver.resolve(request);
+				if (token != null) return token;
+				if (request.getCookies() != null) {
+					for (Cookie cookie : request.getCookies()) {
+						if ("jwt".equalsIgnoreCase(cookie.getName())) {
+							return cookie.getValue();
+						}
+					}
+				}
+				return null;
 			}
 		};
 	}
@@ -156,44 +148,32 @@ public class WebSecurityConfig {
 	}
 
 	@Bean
-	public SessionRegistryImpl sessionRegistry() {
-		return new SessionRegistryImpl();
-	}
-
-	@Bean
-	public RegisterSessionAuthenticationStrategy sessionAuthenticationStrategy() {
-		return new RegisterSessionAuthenticationStrategy(sessionRegistry());
-	}
-
-	@Bean
-	HttpSessionEventPublisher sessionEventPublisher() {
+	public HttpSessionEventPublisher sessionEventPublisher() {
 		return new HttpSessionEventPublisher();
 	}
 
 	@Bean
 	public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-		http.sessionManagement(sessionManagement -> sessionManagement.sessionAuthenticationStrategy(sessionAuthenticationStrategy()).maximumSessions(5).sessionRegistry(sessionRegistry()));
+		http.sessionManagement(sessionManagement -> sessionManagement.sessionAuthenticationStrategy(sessionAuthenticationStrategy).maximumSessions(5).sessionRegistry(sessionRegistry));
 		if(devShibRequestFilter != null) {
 			http.addFilterBefore(devShibRequestFilter, OAuth2AuthorizationRequestRedirectFilter.class);
 		}
-		http.exceptionHandling(exceptionHandling -> exceptionHandling.defaultAuthenticationEntryPointFor(new IndexEntryPoint("/"), antMatcher("/")));
+		http.exceptionHandling(exceptionHandling -> exceptionHandling.defaultAuthenticationEntryPointFor(new IndexEntryPoint("/"), PathPatternRequestMatcher.withDefaults().matcher("/")));
 		AccessDeniedHandlerImpl accessDeniedHandlerImpl = new AccessDeniedHandlerImpl();
 		accessDeniedHandlerImpl.setErrorPage("/denied");
 		http.exceptionHandling(exceptionHandling -> exceptionHandling.accessDeniedHandler(accessDeniedHandlerImpl));
+		if(securityServices.stream().anyMatch(s -> s instanceof OidcOtpSecurityService)) {
+			http.oauth2Login(oauth2Login -> oauth2Login.loginPage("/")
+				.successHandler(oAuthAuthenticationSuccessHandler)
+				.failureHandler(new OAuth2FailureHandler())
+				.userInfoEndpoint(userInfoEndpoint -> userInfoEndpoint.oidcUserService(validatingOAuth2UserService()))
+				.authorizationEndpoint(authorizationEndpoint -> authorizationEndpoint.authorizationRequestResolver(customAuthorizationRequestResolver())));
+		}
 		for(SecurityService securityService : securityServices) {
-			http.authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests.requestMatchers(antMatcher(securityService.getLoginUrl())).authenticated());
-			http.exceptionHandling(exceptionHandling -> exceptionHandling.defaultAuthenticationEntryPointFor(securityService.getAuthenticationEntryPoint(), antMatcher(securityService.getLoginUrl())));
-			if(securityService.getClass().equals(OAuthSecurityServiceImpl.class)) {
-				http.oauth2Login(oauth2Login -> oauth2Login.loginPage("/"))
-						.oauth2Login(oauth2Login -> oauth2Login.successHandler(((OAuthSecurityServiceImpl) securityService).getoAuthAuthenticationSuccessHandler())
-								.userInfoEndpoint(userInfoEndpoint -> userInfoEndpoint
-										.userService(new ValidatingOAuth2UserService(jwtDecoder()))))
-						.oauth2Login(oauth2Login -> oauth2Login
-								.authorizationEndpoint(authorizationEndpoint -> authorizationEndpoint
-										.authorizationRequestResolver(new CustomAuthorizationRequestResolver(clientRegistrationRepository, webSecurityProperties.getFranceConnectAcr()))));
-
-			} else {
-				http.addFilterBefore(securityService.getAuthenticationProcessingFilter(), OAuth2AuthorizationRequestRedirectFilter.class);
+			http.authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests.requestMatchers(securityService.getLoginUrl()).authenticated());
+			http.exceptionHandling(exceptionHandling -> exceptionHandling.defaultAuthenticationEntryPointFor(securityService.getAuthenticationEntryPoint(), PathPatternRequestMatcher.withDefaults().matcher(securityService.getLoginUrl())));
+			if(securityService.getAuthenticationProcessingFilter() != null) {
+			http.addFilterBefore(securityService.getAuthenticationProcessingFilter(), OAuth2AuthorizationRequestRedirectFilter.class);
 			}
 		}
 		if(globalProperties.getEnableSu()) {
@@ -206,68 +186,49 @@ public class WebSecurityConfig {
 				}
 			}
 		}
-		http.logout(logout -> logout.invalidateHttpSession(true)
-						.logoutRequestMatcher(
-								antMatcher("/logout")
-						));
-		http.logout(logout -> logout.addLogoutHandler(logoutHandler())
-				.logoutSuccessUrl("/login").permitAll());
-		http.csrf(csrf -> csrf.ignoringRequestMatchers(antMatcher("/resources/**"))
-				.ignoringRequestMatchers(antMatcher("/webjars/**"))
-				.ignoringRequestMatchers(antMatcher("/ws/**"))
-				.ignoringRequestMatchers(antMatcher("/nexu-sign/**"))
-				.ignoringRequestMatchers(antMatcher("/otp-access/**"))
-				.ignoringRequestMatchers(antMatcher("/log/**"))
-				.ignoringRequestMatchers(antMatcher("/actuator/**"))
-				.ignoringRequestMatchers(antMatcher("/h2-console/**")));
+		http.logout(logout -> logout.addLogoutHandler(logoutHandler).invalidateHttpSession(true)
+						.logoutUrl("/logout"
+						).logoutSuccessUrl("/logged-out"));
+		http.csrf(csrf -> csrf.ignoringRequestMatchers(("/resources/**"))
+				.ignoringRequestMatchers("/webjars/**")
+				.ignoringRequestMatchers("/ws/**")
+				.ignoringRequestMatchers("/nexu-sign/**")
+				.ignoringRequestMatchers("/log/**")
+				.ignoringRequestMatchers("/actuator/**")
+				.ignoringRequestMatchers("/h2-console/**"));
 		http.headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin));
 		setAuthorizeRequests(http);
 		return http.build();
 	}
 
-//	@Bean
-//	public APIKeyFilter apiKeyFilter() {
-//		APIKeyFilter filter = new APIKeyFilter();
-//		filter.setAuthenticationManager(authentication -> {
-//			if(authentication.getPrincipal() == null) {
-//				throw new BadCredentialsException("Access Denied.");
-//			}
-//			String apiKey = (String) authentication.getPrincipal();
-//			if (authentication.getPrincipal() != null && this.apiKey.equals(apiKey)) {
-//				Collection<SimpleGrantedAuthority> oldAuthorities = (Collection<SimpleGrantedAuthority>) SecurityContextHolder.getContext().getAuthentication().getAuthorities();
-//				SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_WS");
-//				List<SimpleGrantedAuthority> updatedAuthorities = new ArrayList<>();
-//				updatedAuthorities.add(authority);
-//				updatedAuthorities.addAll(oldAuthorities);
-//				SecurityContextHolder.getContext().setAuthentication(
-//						new UsernamePasswordAuthenticationToken(
-//								SecurityContextHolder.getContext().getAuthentication().getPrincipal(),
-//								SecurityContextHolder.getContext().getAuthentication().getCredentials(),
-//								updatedAuthorities));
-//				return SecurityContextHolder.getContext().getAuthentication();
-//			} else {
-//				throw new BadCredentialsException("Access Denied.");
-//			}
-//		});
-//		return filter;
-//	}
+	@Bean
+	public ValidatingOAuth2UserService validatingOAuth2UserService() {
+		return new ValidatingOAuth2UserService(securityServices.stream().filter(s -> s instanceof OidcOtpSecurityService).map(s -> (OidcOtpSecurityService)s).toList(), clientRegistrationRepository);
+	}
+
+	@Bean
+	@ConditionalOnOAuth2ClientRegistrationProperties
+	public CustomAuthorizationRequestResolver customAuthorizationRequestResolver() {
+		return new CustomAuthorizationRequestResolver(clientRegistrationRepository, securityServices.stream().filter(s -> s instanceof OidcOtpSecurityService).map(s -> (OidcOtpSecurityService)s).toList());
+	}
 
 	private void setAuthorizeRequests(HttpSecurity http) throws Exception {
-		http.authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests.requestMatchers(antMatcher("/")).permitAll());
-		http.authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests.requestMatchers(antMatcher("/ws/workflows/**/datas/csv"))
+		http.authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests.requestMatchers(("/")).permitAll());
+		http.authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests.requestMatchers(("/logged-out")).permitAll());
+		http.authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests.requestMatchers(("/ws/workflows/*/datas/csv"))
 				.access(new WebExpressionAuthorizationManager("hasIpAddress('" + webSecurityProperties.getCsvAccessAuthorizeMask() + "')")));
 		setIpsAutorizations(http, webSecurityProperties.getWsAccessAuthorizeIps());
 		setIpsAutorizations(http, webSecurityProperties.getActuatorsAccessAuthorizeIps());
 		http.authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests
-				.requestMatchers(antMatcher("/api-docs/**")).hasAnyRole("ADMIN")
-				.requestMatchers(antMatcher("/swagger-ui/**")).hasAnyRole("ADMIN")
-				.requestMatchers(antMatcher("/swagger-ui.html")).hasAnyRole("ADMIN")
-				.requestMatchers(antMatcher("/admin/**")).hasAnyRole("ADMIN")
-				.requestMatchers(antMatcher("/manager/**")).hasAnyRole("MANAGER")
-				.requestMatchers(antMatcher("/user/**")).hasAnyRole("USER")
-				.requestMatchers(antMatcher("/nexu-sign/**")).hasAnyRole("USER", "OTP", "FRANCECONNECT")
-				.requestMatchers(antMatcher("/otp/**")).hasAnyRole("OTP", "FRANCECONNECT")
-				.requestMatchers(antMatcher("/ws-secure/**")).hasAnyRole("USER", "OTP", "FRANCECONNECT")
+				.requestMatchers("/api-docs/**").hasAnyRole("ADMIN")
+				.requestMatchers("/swagger-ui/**").hasAnyRole("ADMIN")
+				.requestMatchers("/swagger-ui.html").hasAnyRole("ADMIN")
+				.requestMatchers("/admin/**").hasAnyRole("ADMIN")
+				.requestMatchers("/manager/**").hasAnyRole("MANAGER")
+				.requestMatchers("/user/**").hasAnyRole("USER")
+				.requestMatchers("/nexu-sign/**").hasAnyRole("USER", "OTP")
+				.requestMatchers("/otp/**").hasAnyRole("OTP")
+				.requestMatchers("/ws-secure/**").hasAnyRole("USER", "OTP")
 				.anyRequest().permitAll());
 	}
 
@@ -284,24 +245,19 @@ public class WebSecurityConfig {
 			}
 			String finalHasIpAddresses = hasIpAddresses.toString();
 			if(StringUtils.hasText(finalHasIpAddresses)) {
-				http.authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests.requestMatchers(antMatcher("/ws/**"))
+				http.authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests.requestMatchers(("/ws/**"))
 						.access(new WebExpressionAuthorizationManager(finalHasIpAddresses)));
-				http.authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests.requestMatchers(antMatcher("/actuator/**"))
+				http.authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests.requestMatchers(("/actuator/**"))
 						.access(new WebExpressionAuthorizationManager(finalHasIpAddresses)));
 			} else {
-				http.authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests.requestMatchers(antMatcher("/ws/**")).denyAll());
-				http.authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests.requestMatchers(antMatcher("/actuator/**")).denyAll());
+				http.authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests.requestMatchers(("/ws/**")).denyAll());
+				http.authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests.requestMatchers(("/actuator/**")).denyAll());
 			}
 //			http.authorizeRequests().requestMatchers("/ws/**").access("hasRole('WS')").and().addFilter(apiKeyFilter());
 		} else {
-			http.authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests.requestMatchers(antMatcher("/ws/**")).denyAll());
-			http.authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests.requestMatchers(antMatcher("/actuator/**")).denyAll());
+			http.authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests.requestMatchers(("/ws/**")).denyAll());
+			http.authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests.requestMatchers(("/actuator/**")).denyAll());
 		}
-	}
-
-	@Bean
-	public LogoutHandlerImpl logoutHandler() {
-		return new LogoutHandlerImpl();
 	}
 
 	@Bean
@@ -322,17 +278,13 @@ public class WebSecurityConfig {
 	}
 
 	@Bean
-	public SpelGroupService spelGroupService() {
-		SpelGroupService spelGroupService = new SpelGroupService(globalProperties);
-		Map<String, String> groups4eppnSpel = new HashMap<>();
-		if (webSecurityProperties.getGroupMappingSpel() != null) {
-			for (String groupName : webSecurityProperties.getGroupMappingSpel().keySet()) {
-				String spelRule = webSecurityProperties.getGroupMappingSpel().get(groupName);
-				groups4eppnSpel.put(groupName, spelRule);
-			}
-		}
-		spelGroupService.setGroups4eppnSpel(groups4eppnSpel);
-		return spelGroupService;
+	public List<ExternalAuth> getExternalAuths(List<OidcOtpSecurityService> securityServices, SmsProperties smsProperties) {
+		List<ExternalAuth> externalAuths = new ArrayList<>(List.of(ExternalAuth.values()));
+		if(globalProperties.getSmsRequired()) externalAuths.remove(ExternalAuth.open);
+		if(securityServices.stream().noneMatch(s -> s instanceof ProConnectSecurityServiceImpl)) externalAuths.remove(ExternalAuth.proconnect);
+		if(securityServices.stream().noneMatch(s -> s instanceof FranceConnectSecurityServiceImpl)) externalAuths.remove(ExternalAuth.franceconnect);
+		if(BooleanUtils.isFalse(smsProperties.getEnableSms())) externalAuths.remove(ExternalAuth.sms);
+		return externalAuths;
 	}
 
 }

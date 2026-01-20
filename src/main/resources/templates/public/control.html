@@ -49,7 +49,7 @@
                             <h5>Le document n’a pas été modifié depuis sa signature.</h5>
                         </div>
                         <div class="alert alert-light border-secondary mx-auto mb-1" style="page-break-after: always;">
-                            <h4>Signatures</h4>
+                            <h5>Signatures</h5>
                             <table class="table table-sm table-hover">
                                 <thead class="table-secondary">
                                 <tr>
@@ -63,23 +63,32 @@
                                 <tbody>
                                 <th:block th:each="auditStep, iterator : ${auditTrail.auditSteps}">
                                     <tr data-bs-toggle="collapse" th:data-bs-target="'#collapse-' + ${iterator.index}" style="cursor: pointer;" title="Cliquez ici pour afficher le detail">
-                                        <td><i class="fa-solid fa-signature"></i></td>
+                                        <td>
+                                            <i class="fa-solid caret-toggle"></i>
+                                        </td>
                                         <td class="text-left"><span
                                                 th:text="${#dates.format(auditStep.timeStampDate, 'dd/MM/yyyy HH:mm:ss')}"></span></td>
                                         <td class="text-left"><span th:text="${auditStep.firstname} + ' ' + ${auditStep.name}"></span></td>
                                         <td class="text-left"><span th:text="${auditStep.email}"></span></td>
-                                        <td class="text-left" th:text="${auditStep.getAllScrolled()} ? 'lu' : 'non lu'"></td>
+                                        <td class="text-left" th:text="${auditStep.getAllScrolled()} ? 'lu' : 'non lu au moment de la signature'"></td>
                                     </tr>
                                     <tr class="collapse" th:id="'collapse-' + ${iterator.index}">
                                         <td colspan="6">
                                             <dl class="row border-bottom m-0">
                                                 <dt class="col-lg-5">Login : </dt>
-                                                <dd th:text="${auditStep.authenticationDetails}"></dd>
+                                                <dd th:text="${auditStep.login}"></dd>
                                             </dl>
                                             <dl class="row border-bottom m-0">
                                                 <dt class="col-lg-5">Authentification : </dt>
-                                                <dd th:text="${auditStep.authenticationDetails}"></dd>
+                                                <dd>
+                                                    <pre class="prettyprint" style="max-width: 600px; overflow-x: auto;"><code class="language-json" th:text="${auditStep.pettyPrintAuthenticationDetails}"></code></pre>
+                                                </dd>
                                             </dl>
+                                            <link rel="stylesheet" th:href="@{/webjars/highlightjs/styles/github.min.css}">
+                                            <script th:src="@{/webjars/highlightjs/highlight.min.js}"></script>
+                                            <script type="module">
+                                                hljs.highlightAll();
+                                            </script>
                                             <dl class="row border-bottom m-0">
                                                 <dt class="col-lg-5">Id signature : </dt>
                                                 <dd th:text="${auditStep.signId}"></dd>
@@ -118,15 +127,15 @@
                     </div>
                 </th:block>
                 <div th:if="${signRequest != null || (auditTrailChecked != null && auditTrailChecked)}" class="alert alert-light border-secondary mx-auto mb-1" style="page-break-after: auto;">
-                    <h4>Journal des actions</h4>
+                    <h5>Journal des actions</h5>
                     <table class="table table-sm table-hover">
                         <thead class="table-secondary">
                         <tr>
                             <th>Date</th>
-                            <th>Nom</th>
+                            <th title="Utilisateur ayant effectué l'action">Opérateur</th>
+                            <th title="Utilisateur original au nom duquel l'action est effectuée">Mandant</th>
                             <th>Statut</th>
                             <th>Action</th>
-                            <th>Commentaire</th>
                         </tr>
                         </thead>
                         <tbody>
@@ -135,6 +144,7 @@
                                 <td class="text-left"><span
                                         th:text="${#dates.format(log.logDate, 'dd/MM/yyyy HH:mm:ss')}"></span></td>
                                 <td class="text-left"><span th:if="${log.user != null}" th:text="${log.user.firstname} + ' ' + ${log.user.name}"></span></td>
+                                <td class="text-left"><span th:if="${log.userFor != null}" th:text="${log.userFor.firstname} + ' ' + ${log.userFor.name}"></span></td>
                                 <td class="text-left">
                                     <span th:text="#{'signbook.status.' + ${log.finalStatus}}"></span>
                                 </td>
@@ -143,9 +153,6 @@
                                 </td>
                                 <td class="text-left" th:if="${log.action == 'Apposition de la signature'}">
                                     <span th:text="'Apposition d`un visuel en page ' + ${log.pageNumber} + ' aux coordonnées (' + ${log.posX} + ', ' + ${log.posY} + ')'"></span>
-                                </td>
-                                <td class="text-left" th:unless="${log.action == 'Apposition de la signature'}">
-                                    <span th:text="${log.comment}"></span>
                                 </td>
                             </tr>
                         </th:block>

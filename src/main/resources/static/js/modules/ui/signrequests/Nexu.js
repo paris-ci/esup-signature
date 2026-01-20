@@ -28,6 +28,7 @@ export class Nexu {
                 console.info("Esup-DSS-Client est lancé !");
                 $("#nexu_missing_alert").hide();
                 $("#no-options").hide();
+                $("#no-options-alert").hide();
                 $("#selectTypeDiv").show();
                 if(ids != null) {
                     self.loadScript();
@@ -62,6 +63,7 @@ export class Nexu {
             if (nbOptions === 0) {
                 // $("#nexuCheck").removeClass("d-none");
                 $("#no-options").show();
+                $("#no-options-alert").show();
                 $("#signCommentDiv").hide();
                 // $("#selectTypeDiv").hide();
                 $("#checkValidateSignButtonEnd").hide();
@@ -69,6 +71,7 @@ export class Nexu {
             } else {
                 // $("#nexuCheck").addClass("d-none");
                 $("#no-options").hide();
+                $("#no-options-alert").hide();
                 $("#signCommentDiv").show();
                 // $("#selectTypeDiv").show();
                 $("#checkValidateSignButtonEnd").show();
@@ -165,7 +168,7 @@ export class Nexu {
                     } else if (jsonResp.feedback.stacktrace.includes("keystore password was incorrect")) {
                         $("#errorText").html("Le mot de passe du keystore est incorrect");
                     } else if (jsonResp.feedback.stacktrace.includes("CKR_PIN_INCORRECT")) {
-                        $("#errorText").html("Le code pin est incorrect");
+                        $("#errorText").html("Le code PIN est incorrect. Attention, après 3 essais infructueux, votre certificat sera définitivement bloqué !");
                     }
                 } else if (jsonResp.message != null) {
                     if (jsonResp.message.includes("is expired")) {
@@ -248,6 +251,7 @@ export class Nexu {
                     Nexu.version = data.version;
                     $("#nexu_missing_alert").hide();
                     $("#no-options").hide();
+                    $("#no-options-alert").hide();
                     $("#selectTypeDiv").show();
                     breakOut = true;
                     resolve("detected");

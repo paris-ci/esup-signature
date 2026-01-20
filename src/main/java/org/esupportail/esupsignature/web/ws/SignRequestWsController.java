@@ -24,10 +24,7 @@ import org.esupportail.esupsignature.entity.SignRequestParams;
 import org.esupportail.esupsignature.entity.enums.SignType;
 import org.esupportail.esupsignature.exception.EsupSignatureException;
 import org.esupportail.esupsignature.exception.EsupSignatureRuntimeException;
-import org.esupportail.esupsignature.service.RecipientService;
-import org.esupportail.esupsignature.service.SignBookService;
-import org.esupportail.esupsignature.service.SignRequestParamsService;
-import org.esupportail.esupsignature.service.SignRequestService;
+import org.esupportail.esupsignature.service.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -55,12 +52,14 @@ public class SignRequestWsController {
     private final SignBookService signBookService;
 
     private final SignRequestParamsService signRequestParamsService;
+    private final LiveWorkflowStepService liveWorkflowStepService;
 
-    public SignRequestWsController(SignRequestService signRequestService, RecipientService recipientService, SignBookService signBookService, SignRequestParamsService signRequestParamsService) {
+    public SignRequestWsController(SignRequestService signRequestService, RecipientService recipientService, SignBookService signBookService, SignRequestParamsService signRequestParamsService, LiveWorkflowStepService liveWorkflowStepService) {
         this.signRequestService = signRequestService;
         this.recipientService = recipientService;
         this.signBookService = signBookService;
         this.signRequestParamsService = signRequestParamsService;
+        this.liveWorkflowStepService = liveWorkflowStepService;
     }
 
     @CrossOrigin
@@ -142,7 +141,7 @@ public class SignRequestWsController {
                                     @RequestParam(required = false) @Parameter(deprecated = true, description = "Tout les participants doivent-ils signer ?") Boolean allSignToComplete,
                                     @RequestParam(required = false) @Parameter(deprecated = true, description = "Le créateur doit-il signer en premier ?") Boolean userSignFirst,
                                     @RequestParam(required = false) @Parameter(deprecated = true, description = "Forcer la signature de tous les documents") Boolean forceAllSign,
-                                    @RequestParam(required = false) @Parameter(deprecated = true, description = "Type de signature", schema = @Schema(allowableValues = {"visa", "pdfImageStamp", "certSign", "nexuSign"}), examples = {@ExampleObject(value = "visa"), @ExampleObject(value = "pdfImageStamp"), @ExampleObject(value = "certSign"), @ExampleObject(value = "nexuSign")}) String signType,
+                                    @RequestParam(required = false) @Parameter(deprecated = true, description = "Type de signature", schema = @Schema(allowableValues = {"visa", "hiddenVisa", "signature"}), examples = {@ExampleObject(value = "visa"), @ExampleObject(value = "signature")}) String signType,
                                     @RequestParam(required = false) @Parameter(deprecated = true, description = "EPPN du créateur/propriétaire de la demande (ancien nom)") String eppn
                        ) throws EsupSignatureException {
         if(json == null) {
@@ -161,7 +160,7 @@ public class SignRequestWsController {
         if(stepsJsonString == null && recipientEmails != null) {
             workflowStepDtos = recipientService.convertRecipientEmailsToStep(recipientEmails);
             workflowStepDtos.forEach(workflowStepDto -> {
-                workflowStepDto.setSignType(SignType.valueOf(signType));
+                workflowStepDto.setSignType(SignType.fromString(signType));
                 workflowStepDto.setAllSignToComplete(allSignToComplete);
                 workflowStepDto.setUserSignFirst(userSignFirst);
                 workflowStepDto.setComment(comment);
@@ -234,7 +233,7 @@ public class SignRequestWsController {
                                                    @RequestParam Integer stepNumber) throws JsonProcessingException, EsupSignatureException {
         List<RecipientWsDto> recipientWsDtos = new ObjectMapper().readValue(recipientWsDtosString, new TypeReference<List<RecipientWsDto>>() {});
         SignRequest signRequest = signRequestService.getById(id);
-        signRequestService.replaceRecipientsToWorkflowStep(signRequest.getParentSignBook().getId(), stepNumber, recipientWsDtos);
+        liveWorkflowStepService.replaceRecipientsToWorkflowStep(signRequest.getParentSignBook().getId(), stepNumber, recipientWsDtos);
         return ResponseEntity.ok().build();
     }
 

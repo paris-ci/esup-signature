@@ -17,7 +17,7 @@
  */
 package org.esupportail.esupsignature.web;
 
-import jakarta.annotation.Resource;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.esupportail.esupsignature.config.GlobalProperties;
@@ -28,6 +28,7 @@ import org.esupportail.esupsignature.service.SignRequestService;
 import org.esupportail.esupsignature.service.UserService;
 import org.esupportail.esupsignature.service.ldap.LdapPersonLightService;
 import org.esupportail.esupsignature.service.ldap.entry.PersonLightLdap;
+import org.esupportail.esupsignature.service.security.OidcOtpSecurityService;
 import org.esupportail.esupsignature.service.security.PreAuthorizeService;
 import org.esupportail.esupsignature.service.security.SecurityService;
 import org.esupportail.esupsignature.service.security.cas.CasSecurityServiceImpl;
@@ -37,6 +38,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser;
 import org.springframework.security.web.savedrequest.DefaultSavedRequest;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -45,6 +47,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.util.List;
+import java.util.Objects;
 
 @RequestMapping("/")
 @Controller
@@ -53,30 +56,25 @@ public class IndexController {
 
 	private static final Logger logger = LoggerFactory.getLogger(IndexController.class);
 
-	private final GlobalProperties globalProperties;
-
-	@Resource
-	private PreAuthorizeService preAuthorizeService;
-
 	@ModelAttribute("activeMenu")
 	public String getActiveMenu() {
 		return "home";
 	}
 
-	@Resource
-	private List<SecurityService> securityServices;
-
-	@Resource
-	private UserService userService;
-
-	@Resource
-	private SignRequestService signRequestService;
-
+	private final GlobalProperties globalProperties;
+	private final PreAuthorizeService preAuthorizeService;
+	private final List<SecurityService> securityServices;
+	private final UserService userService;
+	private final SignRequestService signRequestService;
 	private final LdapPersonLightService ldapPersonLightService;
 
-	public IndexController(GlobalProperties globalProperties, @Autowired(required = false) LdapPersonLightService ldapPersonLightService) {
+	public IndexController(GlobalProperties globalProperties, PreAuthorizeService preAuthorizeService, List<SecurityService> securityServices, UserService userService, SignRequestService signRequestService, @Autowired(required = false) LdapPersonLightService ldapPersonLightService) {
 		this.globalProperties = globalProperties;
-		this.ldapPersonLightService = ldapPersonLightService;
+        this.preAuthorizeService = preAuthorizeService;
+        this.securityServices = securityServices;
+        this.userService = userService;
+        this.signRequestService = signRequestService;
+        this.ldapPersonLightService = ldapPersonLightService;
 	}
 
 	@GetMapping
@@ -84,7 +82,12 @@ public class IndexController {
 		String savedQueryString = null;
 		HttpSession httpSession = httpServletRequest.getSession(false);
 		if(httpSession != null) {
-			DefaultSavedRequest defaultSavedRequest = (DefaultSavedRequest) httpSession.getAttribute("SPRING_SECURITY_SAVED_REQUEST");
+			DefaultSavedRequest defaultSavedRequest = null;
+			try {
+				defaultSavedRequest = (DefaultSavedRequest) httpSession.getAttribute("SPRING_SECURITY_SAVED_REQUEST");
+			} catch (Exception e) {
+				logger.warn(e.getMessage());
+			}
 			if (defaultSavedRequest != null) {
 				if (StringUtils.hasText(defaultSavedRequest.getQueryString())) {
 					savedQueryString = defaultSavedRequest.getRequestURL() + "?" + defaultSavedRequest.getQueryString();
@@ -100,13 +103,16 @@ public class IndexController {
 		} else {
 			if("anonymousUser".equals(auth.getName())) {
 				logger.trace("auth user : " + auth.getName());
-				model.addAttribute("securityServices", securityServices);
+				model.addAttribute("securityServices", securityServices.stream().filter(s -> !(s instanceof OidcOtpSecurityService)).toList());
 				model.addAttribute("globalProperties", globalProperties);
 				if(StringUtils.hasText(savedQueryString)) {
 					model.addAttribute("redirect", savedQueryString);
 					if(!savedQueryString.contains("/casentry") && securityServices.size() == 1 && securityServices.get(0) instanceof CasSecurityServiceImpl) {
 						return "redirect:/login/casentry?redirect=" + savedQueryString;
 					}
+				}
+				if(httpServletRequest.getSession().getAttribute("errorMsg") != null) {
+					model.addAttribute("message", new JsMessage("error", httpServletRequest.getSession().getAttribute("errorMsg").toString()));
 				}
 				return "signin";
 			} else {
@@ -156,6 +162,23 @@ public class IndexController {
 		return "redirect:/user";
 	}
 
+	@RequestMapping(
+			value = {"/login/proconnectentry", "/login/franceconnectentry"},
+			method = {RequestMethod.GET, RequestMethod.POST}
+	)	public String loginFranceConnectRedirectionPost(Authentication authentication, Model model) {
+        String name = authentication.getName();
+        if(authentication.getPrincipal() instanceof DefaultOidcUser defaultOidcUser) {
+            name = defaultOidcUser.getAttributes().get("given_name").toString() + " ";
+            name += defaultOidcUser.getAttributes().containsKey("family_name")
+                    ? defaultOidcUser.getAttributes().get("family_name").toString()
+                    : defaultOidcUser.getAttributes().get("usual_name").toString();
+        }
+        model.addAttribute("errorMsg", "Bonjour " + name + ",<br>" +
+                "Merci de vous déconnecter et d'utiliser de nouveau le lien d'accès présent dans le mail que vous avez reçu pour signer votre document." +
+                "Une nouvelle connexion est necessaire pour chaque nouvelle demande à signer");
+        return "otp/error";
+	}
+
 	public User getAuthUser(Authentication auth) {
 		User user = null;
 		if (auth != null && !auth.getName().equals("anonymousUser")) {
@@ -183,9 +206,32 @@ public class IndexController {
 	}
 
 	@GetMapping("/logged-out")
-	public String loggedOut() {
+	public String loggedOut(HttpServletRequest httpServletRequest) {
+		String returnedState = httpServletRequest.getParameter("state");
+		String expectedState = null;
+		if (returnedState != null && httpServletRequest.getCookies() != null) {
+			for (Cookie cookie : httpServletRequest.getCookies()) {
+				if ("logout_state".equals(cookie.getName())) {
+					expectedState = cookie.getValue();
+				}
+			}
+            if (!Objects.equals(returnedState, expectedState)) {
+                throw new IllegalStateException("Échec vérification du state !");
+            }
+		}
+		httpServletRequest.getSession().invalidate();
 		return "logged-out";
 	}
+
+    @GetMapping("/rgpd")
+    public String rgpd() {
+        return "rgpd";
+    }
+
+    @GetMapping("/rgaa")
+    public String rgaa() {
+        return "rgaa";
+    }
 
 	@RequestMapping(value={"/robots.txt", "/robot.txt"}, produces = "text/plain")
 	@ResponseBody

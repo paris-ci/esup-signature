@@ -8,7 +8,7 @@
 <head th:replace="~{fragments/head :: head}"></head>
 <script th:inline="javascript" type="module">
     import {ListSignBooksUi} from '/js/modules/ui/signbooks/ListSignBooksUi.js?version=@[(${versionApp})]@';
-    new ListSignBooksUi([[${signBooks}]], [[${statusFilter}]], [[${recipientsFilter}]], [[${workflowFilter}]], [[creatorFilter]], [[${docTitleFilter}]], [[${infiniteScrolling}]], [[${_csrf}]], "user/manage/workflow/[[${workflow.id}]]");
+    new ListSignBooksUi([[${signBooks}]], [[${statusFilter}]], [[${recipientsFilter}]], [[${workflowFilter}]], [[${creatorFilter}]], [[${docTitleFilter}]], [[${infiniteScrolling}]], [[${_csrf}]], "user/manage/workflow/[[${workflow.id}]]");
 </script>
 <body>
 <header th:replace="~{fragments/nav :: nav}"></header>
@@ -167,7 +167,7 @@
                                             <form th:id="'signBookDel' + ${signBook.id}" th:action="'/user/signbooks/'+ ${signBook.id}" th:method="delete">
                                                 <div class="modal-header">
                                                     <h2>Attention</h2>
-                                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                                                    <button type="button" class="btn-close" title="Fermer" data-bs-dismiss="modal" aria-label="Close">
 
                                                     </button>
                                                 </div>

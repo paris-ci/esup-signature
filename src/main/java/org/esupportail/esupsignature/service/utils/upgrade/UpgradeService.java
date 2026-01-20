@@ -2,8 +2,11 @@ package org.esupportail.esupsignature.service.utils.upgrade;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import org.apache.commons.lang3.BooleanUtils;
 import org.esupportail.esupsignature.config.GlobalProperties;
 import org.esupportail.esupsignature.entity.*;
+import org.esupportail.esupsignature.entity.enums.ActionType;
+import org.esupportail.esupsignature.entity.enums.ArchiveStatus;
 import org.esupportail.esupsignature.entity.enums.SignRequestStatus;
 import org.esupportail.esupsignature.repository.AppliVersionRepository;
 import org.esupportail.esupsignature.repository.SignBookRepository;
@@ -33,20 +36,14 @@ public class UpgradeService {
 
     @PersistenceContext
     private final EntityManager entityManager;
-
     private final GlobalProperties globalProperties;
-
     private final SignBookRepository signBookRepository;
-
     private final AppliVersionRepository appliVersionRepository;
-
     private final BuildProperties buildProperties;
-
     private final FileService fileService;
-
     private final FormService formService;
 
-    private final String[] updates = new String[] {"1.19", "1.22", "1.23", "1.29.10", "1.30.5"};
+    private final String[] updates = new String[] {"1.19", "1.22", "1.23", "1.29.10", "1.30.5", "1.33.7", "1.34.0", "1.34.4"};
 
     public UpgradeService(EntityManager entityManager, GlobalProperties globalProperties, SignBookRepository signBookRepository, AppliVersionRepository appliVersionRepository, @Autowired(required = false) BuildProperties buildProperties, FileService fileService, FormService formService) {
         this.entityManager = entityManager;
@@ -95,8 +92,7 @@ public class UpgradeService {
                 if(!appliVersions.isEmpty()) {
                     appliVersions.get(0).setEsupSignatureVersion(update);
                 } else {
-                    AppliVersion appliVersion = new AppliVersion();
-                    appliVersion.setEsupSignatureVersion(update);
+                    AppliVersion appliVersion = new AppliVersion(update);
                     appliVersionRepository.save(appliVersion);
                 }
             } else {
@@ -166,7 +162,6 @@ public class UpgradeService {
                     || signBook.getStatus().equals(SignRequestStatus.exported)
                     || signBook.getStatus().equals(SignRequestStatus.refused)
                     || signBook.getStatus().equals(SignRequestStatus.signed)
-                    || signBook.getStatus().equals(SignRequestStatus.archived)
                     || signBook.getDeleted())) {
                 List<Action> actions = signBook.getSignRequests().stream().map(SignRequest::getRecipientHasSigned).map(Map::values).flatMap(Collection::stream).filter(action -> action.getDate() != null).sorted(Comparator.comparing(Action::getDate).reversed()).collect(Collectors.toList());
                 if(!actions.isEmpty()) {
@@ -257,8 +252,6 @@ public class UpgradeService {
                             if(signBook.getLiveWorkflow().getWorkflow() != null) {
                                 if(signBook.getLiveWorkflow().getWorkflow().getDescription() != null) {
                                     signBook.setWorkflowName(signBook.getLiveWorkflow().getWorkflow().getDescription());
-                                } else if(signBook.getLiveWorkflow().getWorkflow().getTitle() != null) {
-                                    signBook.setWorkflowName(signBook.getLiveWorkflow().getWorkflow().getTitle());
                                 } else if(signBook.getLiveWorkflow().getWorkflow().getName() != null) {
                                     signBook.setWorkflowName(signBook.getLiveWorkflow().getWorkflow().getName());
                                 } else {
@@ -292,4 +285,175 @@ public class UpgradeService {
         entityManager.createNativeQuery("alter table sign_request_params alter column y_pos drop not null").executeUpdate();
         logger.info("#### Update signRequestParams completed ####");
     }
+
+    @SuppressWarnings("unused")
+    public void update_1_33_7() {
+        logger.info("#### Starting update workflow ####");
+        entityManager.createNativeQuery(
+                "DO $$ BEGIN " +
+                        "IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'workflow' AND column_name = 'autorize_clone') THEN " +
+                        "UPDATE workflow SET authorize_clone = autorize_clone WHERE authorize_clone IS NULL; " +
+                        "ALTER TABLE workflow DROP COLUMN autorize_clone; " +
+                        "END IF; " +
+                        "END $$;"
+        ).executeUpdate();
+
+        entityManager.createNativeQuery(
+                "DO $$ DECLARE " +
+                        "rec RECORD; " +
+                        "base TEXT; " +
+                        "suffix INT; " +
+                        "new_token TEXT; " +
+                        "BEGIN " +
+                        "IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'workflow' AND column_name = 'title') THEN " +
+                        "FOR rec IN SELECT id, title FROM workflow LOOP " +
+                        "IF rec.title IS NOT NULL THEN " +
+                        "base := rec.title; " +
+                        "suffix := 1; " +
+                        "new_token := base; " +
+                        "WHILE EXISTS (SELECT 1 FROM workflow WHERE token = new_token) LOOP " +
+                        "new_token := base || '_' || suffix; " +
+                        "suffix := suffix + 1; " +
+                        "END LOOP; " +
+                        "UPDATE workflow SET token = new_token WHERE id = rec.id; " +
+                        "END IF; " +
+                        "END LOOP; " +
+                        "ALTER TABLE workflow DROP COLUMN title; " +
+                        "END IF; " +
+                        "END $$;"
+        ).executeUpdate();
+        logger.info("#### Update workflow completed ####");
+    }
+
+    @SuppressWarnings("unused")
+    public void update_1_34_0() {
+        logger.info("#### Starting update archive status ####");
+
+        List<SignBook> signBooks = signBookRepository.findByStatus(SignRequestStatus.archived);
+        signBooks.addAll(signBookRepository.findByStatus(SignRequestStatus.cleaned));
+
+        for(SignBook signBook : signBooks) {
+            if(signBook.getStatus().equals(SignRequestStatus.archived)) signBook.setArchiveStatus(ArchiveStatus.archived);
+            if(signBook.getStatus().equals(SignRequestStatus.cleaned)) signBook.setArchiveStatus(ArchiveStatus.cleaned);
+            for(SignRequest signRequest : signBook.getSignRequests()) {
+                if(signRequest.getStatus().equals(SignRequestStatus.archived)) signRequest.setArchiveStatus(ArchiveStatus.archived);
+                if(signRequest.getStatus().equals(SignRequestStatus.cleaned)) signRequest.setArchiveStatus(ArchiveStatus.cleaned);
+                if(signRequest.getRecipientHasSigned().values().stream().anyMatch(a -> a.getActionType().equals(ActionType.refused))) {
+                    signRequest.setStatus(SignRequestStatus.refused);
+                } else if(!signBook.getLiveWorkflow().getTargets().isEmpty() && signBook.getLiveWorkflow().getTargets().stream().allMatch(Target::getTargetOk)){
+                    signRequest.setStatus(SignRequestStatus.exported);
+                } else {
+                    signRequest.setStatus(SignRequestStatus.completed);
+                }
+            }
+            if((BooleanUtils.isTrue(signBook.getForceAllDocsSign()) || signBook.getSignRequests().size() == 1) && signBook.getSignRequests().stream().anyMatch(sr -> sr.getRecipientHasSigned().values().stream().anyMatch(a -> a.getActionType().equals(ActionType.refused)))) {
+                signBook.setStatus(SignRequestStatus.refused);
+            } else if(!signBook.getLiveWorkflow().getTargets().isEmpty() && signBook.getLiveWorkflow().getTargets().stream().allMatch(Target::getTargetOk)){
+                signBook.setStatus(SignRequestStatus.exported);
+            } else {
+                signBook.setStatus(SignRequestStatus.completed);
+            }
+        }
+        logger.info("#### Update archive status completed ####");
+    }
+
+    @SuppressWarnings("unused")
+    public void update_1_34_4() {
+        logger.info("#### Starting update sign types ####");
+        entityManager.createNativeQuery("""
+        
+                        DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conname = 'workflow_step_repeatable_sign_type_check'
+                      AND conrelid = 'public.workflow_step'::regclass
+                ) THEN
+                    ALTER TABLE public.workflow_step
+                        DROP CONSTRAINT workflow_step_repeatable_sign_type_check;
+                END IF;
+            END;
+        $$;
+        
+        DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conname = 'workflow_step_sign_type_check'
+                      AND conrelid = 'public.workflow_step'::regclass
+                ) THEN
+                    ALTER TABLE public.workflow_step
+                        DROP CONSTRAINT workflow_step_sign_type_check;
+                END IF;
+            END;
+        $$;
+        
+        DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conname = 'live_workflow_step_repeatable_sign_type_check'
+                      AND conrelid = 'public.live_workflow_step'::regclass
+                ) THEN
+                    ALTER TABLE public.live_workflow_step
+                        DROP CONSTRAINT live_workflow_step_repeatable_sign_type_check;
+                END IF;
+            END;
+        $$;
+        
+        DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conname = 'live_workflow_step_sign_type_check'
+                      AND conrelid = 'public.live_workflow_step'::regclass
+                ) THEN
+                    ALTER TABLE public.live_workflow_step
+                        DROP CONSTRAINT live_workflow_step_sign_type_check;
+                END IF;
+            END;
+        $$;
+        
+        update live_workflow_step set min_sign_level = 'advanced' where repeatable_sign_type = 'certSign' or repeatable_sign_type = 'nexuSign';
+        update workflow_step set min_sign_level = 'advanced' where repeatable_sign_type = 'certSign' or repeatable_sign_type = 'nexuSign';
+        
+        update live_workflow_step set max_sign_level = 'qualified' where repeatable_sign_type = 'certSign' or repeatable_sign_type = 'nexuSign';
+        update workflow_step set max_sign_level = 'qualified' where repeatable_sign_type = 'certSign' or repeatable_sign_type = 'nexuSign';
+        
+        update live_workflow_step set sign_type = 'signature' where sign_type = 'pdfImageStamp' or sign_type = 'certSign' or sign_type = 'nexuSign';
+        update workflow_step set sign_type = 'signature' where sign_type = 'pdfImageStamp' or sign_type = 'certSign' or sign_type = 'nexuSign';
+        
+        update live_workflow_step set repeatable_sign_type = 'signature' where repeatable_sign_type = 'pdfImageStamp' or repeatable_sign_type = 'certSign' or repeatable_sign_type = 'nexuSign';
+        update workflow_step set repeatable_sign_type = 'signature' where repeatable_sign_type = 'pdfImageStamp' or repeatable_sign_type = 'certSign' or repeatable_sign_type = 'nexuSign';
+
+        
+        alter table public.workflow_step
+            add constraint workflow_step_repeatable_sign_type_check
+                check ((repeatable_sign_type)::text = ANY
+                       ((ARRAY ['hiddenVisa'::character varying, 'visa'::character varying, 'signature'::character varying])::text[]));
+        
+        
+        alter table public.live_workflow_step
+            add constraint live_workflow_step_repeatable_sign_type_check
+                check ((repeatable_sign_type)::text = ANY
+                       ((ARRAY ['hiddenVisa'::character varying, 'visa'::character varying, 'signature'::character varying])::text[]));
+        
+        alter table public.workflow_step
+            add constraint workflow_step_sign_type_check
+                check ((sign_type)::text = ANY
+                       ((ARRAY ['hiddenVisa'::character varying, 'visa'::character varying, 'signature'::character varying])::text[]));
+        
+        alter table public.live_workflow_step
+            add constraint live_workflow_step_sign_type_check
+                check ((sign_type)::text = ANY
+                       ((ARRAY ['hiddenVisa'::character varying, 'visa'::character varying, 'signature'::character varying])::text[]));
+        """
+        ).executeUpdate();
+        logger.info("#### Update sign types done ####");
+    }
+
 }

@@ -4,9 +4,7 @@ import jakarta.mail.Address;
 import jakarta.mail.Message;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.InternetAddress;
-import jakarta.mail.internet.MimeMessage;
 import jakarta.mail.util.ByteArrayDataSource;
-import jakarta.transaction.Transactional;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.BooleanUtils;
 import org.apache.commons.lang.StringUtils;
@@ -190,7 +188,8 @@ public class MailService {
         Set<String> toEmails = new HashSet<>();
         if(!signBook.getCreateBy().getEppn().equals("system")) toEmails.add(signBook.getCreateBy().getEmail());
         if(BooleanUtils.isTrue(sendToAll)) {
-            toEmails.addAll(signBook.getTeam().stream().map(User::getEmail).toList());
+            String systemAddress = "system@" + globalProperties.getDomain();
+            toEmails.addAll(signBook.getTeam().stream().map(User::getEmail).toList().stream().filter(email -> !email.equals(systemAddress) && !email.equals("system")).toList());
         }
         User user = userService.getByEppn(userEppn);
         toEmails.removeIf(e -> e.equals(user.getEmail()));
@@ -208,7 +207,6 @@ public class MailService {
         }
     }
 
-    @Transactional
     public void sendCompletedCCMail(SignBook signBook, String userEppn, Set<String> toMails) throws EsupSignatureMailException {
         if (!checkMailSender()) {
             return;
@@ -401,6 +399,29 @@ public class MailService {
         }
     }
 
+
+    public void sendSignRequestReplayAlertOtp(Otp otp, SignBook signBook) throws EsupSignatureMailException {
+        final Context ctx = new Context(Locale.FRENCH);
+        setTemplate(ctx, signBook);
+        ctx.setVariable("url", globalProperties.getRootUrl() + "/otp-access/first/" + otp.getUrlId());
+        ctx.setVariable("urlControl", globalProperties.getRootUrl() + "/public/control/" + signBook.getSignRequests().get(0).getToken());
+        ctx.setVariable("otpValidity", new Date(otp.getCreateDate().getTime() + TimeUnit.MINUTES.toMillis(globalProperties.getOtpValidity())));
+        ctx.setVariable("otp", otp);
+        try {
+            MimeMessageHelper mimeMessage = new MimeMessageHelper(getMailSender().createMimeMessage(), true, "UTF-8");
+            String htmlContent = templateEngine.process("mail/email-replay-otp.html", ctx);
+            mimeMessage.setSubject("Relance pour la signature d'un document émanant de " + messageSource.getMessage("application.footer", null, Locale.FRENCH));
+            logger.info("send signature email otp for " + otp.getUser().getEmail());
+            mimeMessage.setText(htmlContent, true);
+            mimeMessage.setTo(otp.getUser().getEmail());
+            sendMail(mimeMessage, signBook.getLiveWorkflow().getWorkflow());
+            signBook.setLastNotifDate(new Date());
+        } catch (MessagingException | IOException e) {
+            logger.error("unable to send OTP email", e);
+            throw new EsupSignatureMailException("Problème lors de l'envoi du mail", e);
+        }
+    }
+
     public void sendFile(String title, SignBook signBook, String targetUri, boolean sendDocument, boolean sendReport) throws MessagingException, IOException {
         if (!checkMailSender()) {
             return;
@@ -410,7 +431,7 @@ public class MailService {
         MimeMessageHelper mimeMessage = new MimeMessageHelper(getMailSender().createMimeMessage(), true, "UTF-8");
         String htmlContent = templateEngine.process("mail/email-file.html", ctx);
         mimeMessage.setText(htmlContent, true);
-        mimeMessage.setSubject("Un document signé vous est transmit : " + title);
+        mimeMessage.setSubject("Un document signé vous est transmis : " + title);
         mimeMessage.setTo(targetUri.replace("mailto:", "").split(","));
         for(SignRequest signRequest : signBook.getSignRequests()) {
             if(sendDocument) {
@@ -443,35 +464,29 @@ public class MailService {
         mimeMessageHelper.addInline("logo", resizeImage(new ClassPathResource("/static/images/logo.png", MailService.class).getInputStream(), 30));
         mimeMessageHelper.addInline("logo-univ", resizeImage(new ClassPathResource("/static/images/logo-univ.png", MailService.class).getInputStream(), 30));
         mimeMessageHelper.addInline("logo-file", new ClassPathResource("/static/images/fa-file.png", MailService.class));
-        MimeMessage mimeMessage = mimeMessageHelper.getMimeMessage();
         if(workflow != null && BooleanUtils.isTrue(workflow.getDisableEmailAlerts())) {
             logger.debug("email alerts are disabled for this workflow " + workflow.getName());
             return;
         }
         try {
             String systemAddress = "system@" + globalProperties.getDomain();
-            Address[] tosArray = mimeMessage.getRecipients(Message.RecipientType.TO);
+            InternetAddress[] tosArray = (InternetAddress[]) mimeMessageHelper.getMimeMessage().getRecipients(Message.RecipientType.TO);
             if (tosArray != null) {
-                List<Address> tos = Arrays.stream(tosArray).filter(addr -> !systemAddress.equalsIgnoreCase(((InternetAddress) addr).getAddress())).toList();
+                List<InternetAddress> tos = Arrays.stream(tosArray).filter(addr -> !"system".equalsIgnoreCase(addr.getAddress()) && !systemAddress.equalsIgnoreCase(addr.getAddress())).toList();
                 logger.info("send email to : " + String.join(",", tos.stream().map(Address::toString).toList()));
-                mimeMessage.setFrom(mailConfig.getMailFrom());
                 InternetAddress replyToAddress = new InternetAddress(mailConfig.getMailFrom());
                 if (workflow != null && org.springframework.util.StringUtils.hasText(workflow.getMailFrom())) {
                     replyToAddress = new InternetAddress(workflow.getMailFrom());
                 }
-                mimeMessage.setReplyTo(new Address[]{replyToAddress});
-                String[] toHeader = mimeMessage.getHeader("To");
-                if (toHeader == null) {
-                    return;
-                }
+                mimeMessageHelper.getMimeMessage().setFrom(replyToAddress);
+                mimeMessageHelper.getMimeMessage().setReplyTo(new Address[]{replyToAddress});
                 if (org.springframework.util.StringUtils.hasText(globalProperties.getTestEmail())) {
                     tos = new ArrayList<>();
                     tos.add(new InternetAddress(globalProperties.getTestEmail()));
                 }
                 if (!tos.isEmpty()) {
-                    mimeMessage.setHeader("To", String.join(",", tos.stream().map(Address::toString).toList()));
-                    mimeMessage.setRecipients(Message.RecipientType.TO, tos.toArray(new Address[0]));
-                    mailSender.send(mimeMessage);
+                    mimeMessageHelper.setTo(tos.toArray(new InternetAddress[0]));
+                    mailSender.send(mimeMessageHelper.getMimeMessage());
                 }
             }
         } catch(MessagingException e){
@@ -537,7 +552,7 @@ public class MailService {
         try {
             MimeMessageHelper mimeMessage = new MimeMessageHelper(getMailSender().createMimeMessage(), true, "UTF-8");
             mimeMessage.setTo(globalProperties.getApplicationEmail());
-            mimeMessage.setSubject("esup-signature : " + message);
+            mimeMessage.setSubject("[esup-signature] " + message);
             mimeMessage.setText(trace, false);
             sendMail(mimeMessage, null);
         } catch (MessagingException e) {
